@@ -618,30 +618,61 @@ function startOnboard(role){
 }
 
 // ══ WALLET ════════════════════════════════════════════════
+function getWalletProvider(){
+  // Priority: Rabby → MetaMask → Coinbase → OKX → any EVM provider
+  if(window.rabby) return window.rabby;
+  if(window.ethereum?.providers?.length){
+    const providers=window.ethereum.providers;
+    return (
+      providers.find(p=>p.isRabby) ||
+      providers.find(p=>p.isMetaMask) ||
+      providers.find(p=>p.isCoinbaseWallet) ||
+      providers.find(p=>p.isOkxWallet) ||
+      providers[0]
+    );
+  }
+  if(window.ethereum) return window.ethereum;
+  return null;
+}
+
 async function connectAndOnboard(){
   const name=$('ob-name').value.trim();
   if(!name){toast('Enter your name or company name','error');return;}
   const btn=$('ob-btn');
   btn.disabled=true; btn.innerHTML='<span class="spin"></span> Connecting…';
   try{
-    if(!window.ethereum) throw new Error('MetaMask not found. Install at metamask.io');
-    provider=new ethers.providers.Web3Provider(window.ethereum);
+    const walletProvider=getWalletProvider();
+    if(!walletProvider) throw new Error('No EVM wallet found. Install Rabby, MetaMask, or any EVM wallet.');
+    provider=new ethers.providers.Web3Provider(walletProvider,'any');
     await provider.send('eth_requestAccounts',[]);
-    await switchNet();
-    provider=new ethers.providers.Web3Provider(window.ethereum);
+    await switchNet(walletProvider);
+    // Re-init provider after network switch
+    provider=new ethers.providers.Web3Provider(walletProvider,'any');
     signer=provider.getSigner();
     walletAddress=await signer.getAddress();
     const role=$('ob-role').value||'Worker';
     currentUser={name,role,wallet:walletAddress,joinedAt:Date.now()};
     db.s('profile',currentUser);
     currentRole==='employer'?enterEmployer():enterWorker();
-  }catch(e){ toast(e.message,'error'); }
+  }catch(e){
+    const msg=e?.message||'Connection failed';
+    toast(msg.length>100?msg.slice(0,100)+'…':msg,'error');
+  }
   finally{ btn.disabled=false; btn.innerHTML='Connect Wallet on Pharos Atlantic'; }
 }
 
-async function switchNet(){
-  try{ await window.ethereum.request({method:'wallet_switchEthereumChain',params:[{chainId:ATLANTIC.chainId}]}); }
-  catch(e){ if(e.code===4902) await window.ethereum.request({method:'wallet_addEthereumChain',params:[ATLANTIC]}); else throw e; }
+async function switchNet(walletProvider){
+  const wp=walletProvider||getWalletProvider();
+  try{
+    await wp.request({method:'wallet_switchEthereumChain',params:[{chainId:ATLANTIC.chainId}]});
+  }catch(e){
+    // 4902 = chain not added, add it; some wallets use -32603 for same error
+    if(e.code===4902||e.code===-32603){
+      await wp.request({method:'wallet_addEthereumChain',params:[ATLANTIC]});
+    } else {
+      throw e;
+    }
+  }
 }
 
 // ══ EMPLOYER ══════════════════════════════════════════════
@@ -1019,9 +1050,11 @@ window.addEventListener('DOMContentLoaded',()=>{
       startOnboard(role);
     });
   });
-  if(window.ethereum){
-    window.ethereum.on('accountsChanged',()=>location.reload());
-    window.ethereum.on('chainChanged',()=>location.reload());
+  // Attach wallet event listeners to whichever provider is active
+  const wp=getWalletProvider();
+  if(wp){
+    try{ wp.on('accountsChanged',()=>location.reload()); }catch(_){}
+    try{ wp.on('chainChanged',()=>location.reload()); }catch(_){}
   }
 });
 </script>
