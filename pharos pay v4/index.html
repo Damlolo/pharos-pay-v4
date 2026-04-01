@@ -316,7 +316,7 @@ tr:hover td{background:rgba(255,255,255,.015);}
     <div class="divider"><span>network</span></div>
     <div style="font-size:.68rem;color:var(--ink3);line-height:2.2;text-align:center;">
       Chain ID: <span style="color:var(--ink)">688689</span> · RPC: <span style="color:var(--ink)">atlantic.dplabs-internal.com</span><br/>
-      Explorer: <a href="https://pharos-testnet.socialscan.io/" target="_blank" class="link">pharosscan.xyz ↗</a> ·
+      Explorer: <a href="https://testnet.pharosscan.xyz" target="_blank" class="link">pharosscan.xyz ↗</a> ·
       Faucet: <a href="https://testnet.pharosnetwork.xyz" target="_blank" class="link">pharosnetwork.xyz ↗</a>
     </div>
   </div>
@@ -579,7 +579,7 @@ const ATLANTIC = {
   chainName:'Pharos Atlantic',
   rpcUrls:['https://atlantic.dplabs-internal.com'],
   nativeCurrency:{name:'PHRS',symbol:'PHRS',decimals:18},
-  blockExplorerUrls:['https://pharos-testnet.socialscan.io/'],
+  blockExplorerUrls:['https://testnet.pharosscan.xyz'],
 };
 const USDC_ADDRESS = 'PASTE_YOUR_USDC_ADDRESS_HERE';
 const USDC_DECIMALS = 6;
@@ -915,7 +915,7 @@ function renderWEarnings(){
     <td style="font-size:.75rem;">${p.description}</td>
     <td style="font-size:.7rem;color:var(--ink3);">${p.period}</td>
     <td style="font-size:.7rem;">${fmtD(p.timestamp)}</td>
-    <td>${p.testMode?'—':`<a href="https://pharos-testnet.socialscan.io/tx/${p.txHash}" target="_blank" class="link lt" style="font-size:.65rem;">${p.txHash.slice(0,8)}…↗</a>`}</td>
+    <td>${p.testMode?'—':`<a href="https://testnet.pharosscan.xyz/tx/${p.txHash}" target="_blank" class="link lt" style="font-size:.65rem;">${p.txHash.slice(0,8)}…↗</a>`}</td>
   </tr>`).join('');
 }
 
