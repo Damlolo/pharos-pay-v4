@@ -1,0 +1,1029 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>PharosPay — Work Platform on Pharos Atlantic</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,700;1,9..144,400&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
+<style>
+:root {
+  --bg:#0d0f14; --bg2:#12151c; --surface:#181c27; --surface2:#1e2333;
+  --border:#252d42; --border2:#2e3850;
+  --ink:#eceef5; --ink2:#9aa0b8; --ink3:#5a6285;
+  --gold:#f5b944; --gold-d:#c9941a; --gold-glow:rgba(245,185,68,0.15);
+  --teal:#2dd4c0; --teal-d:#1aa898;
+  --red:#f05252; --green:#34d68d;
+  --mono:'JetBrains Mono',monospace; --serif:'Fraunces',serif;
+  --r:10px; --r-lg:16px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+html{scroll-behavior:smooth;}
+body{font-family:var(--mono);background:var(--bg);color:var(--ink);min-height:100vh;font-size:13px;line-height:1.6;-webkit-font-smoothing:antialiased;}
+body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;opacity:.022;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");background-size:200px 200px;}
+::-webkit-scrollbar{width:4px;height:4px;}
+::-webkit-scrollbar-track{background:var(--bg);}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:4px;}
+
+/* SCREENS */
+.screen{display:none;}
+.screen.active{display:flex;min-height:100vh;}
+
+/* LANDING */
+#screen-landing{flex-direction:column;align-items:center;justify-content:center;padding:40px 24px;text-align:center;background:radial-gradient(ellipse 60% 50% at 50% -10%,rgba(245,185,68,.12) 0%,transparent 70%),var(--bg);}
+.landing-badge{display:inline-flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border);padding:6px 16px;border-radius:20px;font-size:.7rem;color:var(--teal);letter-spacing:1px;text-transform:uppercase;margin-bottom:36px;}
+.landing-badge::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--teal);animation:pulse 2s infinite;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.landing-title{font-family:var(--serif);font-size:clamp(2.4rem,7vw,4.6rem);font-weight:700;line-height:1.05;letter-spacing:-2px;margin-bottom:20px;max-width:700px;}
+.landing-title em{font-style:italic;color:var(--gold);}
+.landing-sub{color:var(--ink2);font-size:.88rem;max-width:400px;margin:0 auto 48px;line-height:1.8;}
+.role-cards{display:flex;gap:20px;justify-content:center;flex-wrap:wrap;max-width:600px;}
+.role-card{flex:1;min-width:220px;max-width:260px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:28px 24px;cursor:pointer;transition:all .22s;text-align:left;position:relative;overflow:hidden;}
+.role-card::before{content:'';position:absolute;inset:0;opacity:0;transition:opacity .22s;pointer-events:none;}
+.role-card.employer::before{background:radial-gradient(circle at top left,var(--gold-glow),transparent 60%);}
+.role-card.worker::before{background:radial-gradient(circle at top left,rgba(45,212,192,.1),transparent 60%);}
+.role-card:hover{border-color:var(--border2);transform:translateY(-3px);}
+.role-card:hover::before{opacity:1;}
+.role-card.employer:hover{border-color:var(--gold-d);box-shadow:0 12px 40px rgba(245,185,68,.12);}
+.role-card.worker:hover{border-color:var(--teal-d);box-shadow:0 12px 40px rgba(45,212,192,.1);}
+.role-icon{font-size:2rem;margin-bottom:14px;display:block;pointer-events:none;}
+.role-title{font-family:var(--serif);font-size:1.3rem;font-weight:700;margin-bottom:8px;pointer-events:none;}
+.role-desc{font-size:.72rem;color:var(--ink2);line-height:1.7;margin-bottom:16px;pointer-events:none;}
+.role-features{list-style:none;pointer-events:none;}
+.role-features li{font-size:.68rem;color:var(--ink3);padding:3px 0;display:flex;align-items:center;gap:6px;}
+.role-features li::before{content:'—';color:var(--gold);flex-shrink:0;}
+.role-card.worker .role-features li::before{color:var(--teal);}
+.role-cta{display:block;margin-top:20px;font-size:.72rem;font-weight:500;color:var(--gold);text-transform:uppercase;letter-spacing:1px;pointer-events:none;}
+.role-card.worker .role-cta{color:var(--teal);}
+
+/* ONBOARD */
+#screen-onboard{flex-direction:column;align-items:center;justify-content:center;padding:40px 24px;background:radial-gradient(ellipse 50% 40% at 50% 0%,rgba(245,185,68,.08) 0%,transparent 60%),var(--bg);}
+.onboard-box{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:40px;max-width:440px;width:100%;}
+.onboard-back{background:none;border:none;color:var(--ink3);font-family:var(--mono);font-size:.72rem;cursor:pointer;padding:0;margin-bottom:28px;display:flex;align-items:center;gap:6px;transition:color .15s;}
+.onboard-back:hover{color:var(--ink);}
+.onboard-title{font-family:var(--serif);font-size:1.7rem;font-weight:700;margin-bottom:6px;}
+.onboard-sub{color:var(--ink2);font-size:.78rem;margin-bottom:28px;}
+.wc-btn{width:100%;display:flex;align-items:center;justify-content:center;gap:10px;background:var(--gold);color:#000;font-family:var(--mono);font-weight:500;font-size:.84rem;border:none;padding:13px 20px;border-radius:8px;cursor:pointer;transition:all .18s;}
+.wc-btn:hover{background:var(--gold-d);transform:translateY(-1px);}
+.wc-btn.teal{background:var(--teal);}
+.wc-btn.teal:hover{background:var(--teal-d);}
+.wc-btn:disabled{opacity:.4;cursor:not-allowed;transform:none;}
+.divider{display:flex;align-items:center;gap:12px;margin:20px 0;}
+.divider::before,.divider::after{content:'';flex:1;height:1px;background:var(--border);}
+.divider span{font-size:.65rem;color:var(--ink3);text-transform:uppercase;letter-spacing:1px;}
+
+/* APP LAYOUT */
+#screen-employer,#screen-worker{flex-direction:row;}
+
+/* SIDEBAR */
+.sidebar{width:220px;flex-shrink:0;background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow-y:auto;}
+.sidebar-brand{padding:24px 20px 20px;border-bottom:1px solid var(--border);}
+.brand-logo{font-family:var(--serif);font-size:1.25rem;font-weight:700;color:var(--ink);margin-bottom:2px;}
+.brand-logo em{font-style:italic;color:var(--gold);}
+.brand-role-badge{display:inline-block;font-size:.6rem;text-transform:uppercase;letter-spacing:1.2px;padding:2px 8px;border-radius:4px;margin-top:6px;}
+.eb{background:rgba(245,185,68,.12);color:var(--gold);}
+.wb{background:rgba(45,212,192,.12);color:var(--teal);}
+.sidebar-wallet{padding:14px 20px;border-bottom:1px solid var(--border);}
+.wallet-addr{font-size:.65rem;color:var(--ink3);display:flex;align-items:center;gap:6px;}
+.wdot{width:6px;height:6px;border-radius:50%;background:var(--green);flex-shrink:0;}
+.sidebar-nav{flex:1;padding:12px 10px;}
+.nav-section{font-size:.58rem;text-transform:uppercase;letter-spacing:1.5px;color:var(--ink3);padding:12px 10px 6px;}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;cursor:pointer;font-size:.78rem;color:var(--ink2);transition:all .15s;border:none;background:none;width:100%;text-align:left;font-family:var(--mono);}
+.nav-item:hover{background:var(--surface);color:var(--ink);}
+.nav-item.active{background:var(--surface2);color:var(--ink);}
+.nav-item.active .ni{color:var(--gold);}
+.nav-item.wactive .ni{color:var(--teal);}
+.ni{font-size:.9rem;width:16px;text-align:center;flex-shrink:0;}
+.nbadge{margin-left:auto;background:var(--gold);color:#000;font-size:.58rem;font-weight:700;padding:1px 6px;border-radius:10px;}
+.sidebar-footer{padding:16px 20px;border-top:1px solid var(--border);}
+.switch-btn{width:100%;background:none;border:1px solid var(--border);color:var(--ink3);font-family:var(--mono);font-size:.68rem;padding:8px;border-radius:7px;cursor:pointer;transition:all .15s;}
+.switch-btn:hover{border-color:var(--border2);color:var(--ink2);}
+
+/* MAIN */
+.main-content{flex:1;overflow-y:auto;padding:32px 36px;background:var(--bg);}
+.page{display:none;}
+.page.active{display:block;}
+
+/* PAGE HEADER */
+.ph{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:28px;gap:16px;flex-wrap:wrap;}
+.pt{font-family:var(--serif);font-size:1.8rem;font-weight:700;letter-spacing:-.5px;}
+.ps{color:var(--ink3);font-size:.75rem;margin-top:4px;}
+
+/* STATS */
+.srow{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px;}
+@media(max-width:900px){.srow{grid-template-columns:repeat(2,1fr);}}
+.sc{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:20px;position:relative;overflow:hidden;}
+.sc::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--gold),transparent);}
+.sc.t::before{background:linear-gradient(90deg,var(--teal),transparent);}
+.sl{font-size:.65rem;text-transform:uppercase;letter-spacing:1px;color:var(--ink3);margin-bottom:10px;}
+.sv{font-family:var(--serif);font-size:1.9rem;font-weight:700;line-height:1;color:var(--ink);}
+.si{position:absolute;top:16px;right:16px;font-size:1.4rem;opacity:.2;}
+
+/* CARD */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:24px;margin-bottom:20px;}
+.ch{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;gap:12px;}
+.ct{font-size:.68rem;text-transform:uppercase;letter-spacing:1.2px;color:var(--ink2);display:flex;align-items:center;gap:8px;}
+.ct::before{content:'';width:3px;height:12px;background:var(--gold);border-radius:2px;}
+.card.t .ct::before{background:var(--teal);}
+
+/* FORM */
+.fg{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.f{display:flex;flex-direction:column;gap:6px;}
+.f label{font-size:.62rem;text-transform:uppercase;letter-spacing:.8px;color:var(--ink3);}
+.f input,.f select,.f textarea{font-family:var(--mono);font-size:.82rem;color:var(--ink);background:var(--bg2);border:1px solid var(--border);padding:10px 13px;border-radius:7px;outline:none;transition:border-color .15s;width:100%;}
+.f input:focus,.f select:focus{border-color:var(--gold);}
+.f input::placeholder{color:var(--ink3);}
+.f select option{background:var(--surface2);}
+.s2{grid-column:span 2;}
+
+/* BUTTONS */
+.btn{font-family:var(--mono);font-size:.78rem;font-weight:500;padding:10px 20px;border-radius:7px;border:none;cursor:pointer;transition:all .18s;display:inline-flex;align-items:center;gap:7px;letter-spacing:.2px;white-space:nowrap;}
+.bg{background:var(--gold);color:#000;}
+.bg:hover{background:var(--gold-d);transform:translateY(-1px);}
+.bt{background:var(--teal);color:#000;}
+.bt:hover{background:var(--teal-d);transform:translateY(-1px);}
+.bgh{background:transparent;border:1px solid var(--border);color:var(--ink2);}
+.bgh:hover{border-color:var(--border2);color:var(--ink);}
+.bd{background:transparent;border:1px solid var(--border);color:var(--red);}
+.bd:hover{background:rgba(240,82,82,.08);border-color:var(--red);}
+.btn:disabled{opacity:.4;cursor:not-allowed;transform:none!important;}
+.sm{padding:6px 12px;font-size:.7rem;}
+.xs{padding:4px 9px;font-size:.64rem;}
+
+/* TABLE */
+.tw{overflow-x:auto;}
+table{width:100%;border-collapse:collapse;}
+th{text-align:left;padding:9px 14px;font-size:.6rem;text-transform:uppercase;letter-spacing:1px;color:var(--ink3);border-bottom:1px solid var(--border);white-space:nowrap;}
+td{padding:12px 14px;border-bottom:1px solid rgba(37,45,66,.6);vertical-align:middle;}
+tr:last-child td{border-bottom:none;}
+tr:hover td{background:rgba(255,255,255,.015);}
+
+/* BADGES */
+.badge{display:inline-flex;align-items:center;gap:4px;font-size:.62rem;font-weight:500;padding:3px 8px;border-radius:4px;text-transform:uppercase;letter-spacing:.5px;}
+.bag{background:rgba(245,185,68,.12);color:var(--gold);border:1px solid rgba(245,185,68,.2);}
+.bat{background:rgba(45,212,192,.1);color:var(--teal);border:1px solid rgba(45,212,192,.2);}
+.bav{background:rgba(52,214,141,.1);color:var(--green);border:1px solid rgba(52,214,141,.2);}
+.bar_{background:rgba(240,82,82,.1);color:var(--red);border:1px solid rgba(240,82,82,.2);}
+.bam{background:var(--surface2);color:var(--ink3);border:1px solid var(--border);}
+
+/* AVATAR */
+.av{border-radius:50%;display:grid;place-items:center;font-family:var(--serif);font-weight:700;flex-shrink:0;}
+
+/* PROFILE HERO */
+.phero{background:linear-gradient(135deg,var(--surface) 0%,var(--surface2) 100%);border:1px solid var(--border);border-radius:var(--r-lg);padding:32px;margin-bottom:20px;display:flex;align-items:center;gap:24px;flex-wrap:wrap;position:relative;overflow:hidden;}
+.phero::before{content:'';position:absolute;top:-40px;right:-40px;width:200px;height:200px;border-radius:50%;background:radial-gradient(circle,var(--gold-glow) 0%,transparent 70%);}
+.pinfo{flex:1;}
+.pname{font-family:var(--serif);font-size:1.5rem;font-weight:700;}
+.phandle{color:var(--ink3);font-size:.72rem;margin-top:2px;}
+.ptags{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;}
+.repring{text-align:center;padding:16px 28px;background:var(--bg);border:1px solid var(--border);border-radius:var(--r);flex-shrink:0;}
+.repscore{font-family:var(--serif);font-size:2.4rem;color:var(--gold);}
+.replabel{font-size:.6rem;text-transform:uppercase;letter-spacing:1px;color:var(--ink3);margin-top:4px;}
+
+/* MODAL */
+.moverlay{display:none;position:fixed;inset:0;z-index:5000;background:rgba(0,0,0,.7);backdrop-filter:blur(6px);align-items:center;justify-content:center;padding:24px;}
+.moverlay.open{display:flex;}
+.mbox{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);max-width:540px;width:100%;max-height:90vh;overflow-y:auto;animation:mIn .22s ease;}
+@keyframes mIn{from{transform:scale(.96);opacity:0}to{transform:none;opacity:1}}
+.mhead{display:flex;align-items:center;justify-content:space-between;padding:20px 24px;border-bottom:1px solid var(--border);}
+.mtitle{font-family:var(--serif);font-size:1.2rem;font-weight:700;}
+.mclose{background:none;border:none;color:var(--ink3);font-size:1.1rem;cursor:pointer;padding:4px 8px;}
+.mclose:hover{color:var(--ink);}
+.mbody{padding:24px;}
+.mfoot{padding:16px 24px;border-top:1px solid var(--border);display:flex;gap:10px;justify-content:flex-end;}
+
+/* INVOICE PRINT */
+.invp{background:#fff;color:#111;border-radius:8px;font-family:var(--mono);padding:32px;font-size:.76rem;border:1px solid var(--border);}
+.invh{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:28px;}
+.invbrand{font-family:var(--serif);font-size:1.6rem;font-weight:700;color:#111;}
+.invbrand em{color:#c9941a;font-style:normal;}
+.invmeta{text-align:right;font-size:.68rem;color:#666;line-height:2;}
+.invamt{font-family:var(--serif);font-size:2.8rem;color:#c9941a;margin:16px 0;}
+.invgrid{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:24px;}
+.invsl{font-size:.6rem;text-transform:uppercase;letter-spacing:1px;color:#999;margin-bottom:4px;}
+.invsv{font-weight:600;color:#111;line-height:1.6;}
+.invt{width:100%;border-collapse:collapse;margin-bottom:20px;}
+.invt th{font-size:.6rem;text-transform:uppercase;letter-spacing:1px;color:#999;border-bottom:2px solid #eee;padding:6px 0;text-align:left;}
+.invt td{padding:10px 0;border-bottom:1px solid #f5f5f5;color:#111;}
+.invtotal{text-align:right;font-family:var(--serif);font-size:1.1rem;font-weight:700;border-top:2px solid #111;padding-top:10px;}
+.invfooter{margin-top:24px;font-size:.6rem;color:#bbb;border-top:1px solid #eee;padding-top:14px;}
+
+/* JOB CARDS */
+.jc{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:18px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;}
+.jc.paid{border-left:3px solid var(--green);}
+.jc.pending{border-left:3px solid var(--gold);}
+.jt{font-weight:500;font-size:.84rem;}
+.je{font-size:.68rem;color:var(--ink3);margin-top:2px;}
+.jp_{font-size:.68rem;color:var(--ink3);}
+.jamount{font-family:var(--serif);font-size:1.3rem;color:var(--teal);}
+
+/* INCOME CHART */
+.ibars{display:flex;align-items:flex-end;gap:6px;height:80px;margin-top:16px;}
+.ibw{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;}
+.ib{width:100%;border-radius:3px 3px 0 0;background:var(--teal);opacity:.7;transition:opacity .2s;}
+.ib:hover{opacity:1;}
+.ib.gold{background:var(--gold);}
+
+/* TOAST */
+#toast{position:fixed;bottom:28px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--surface2);border:1px solid var(--border);color:var(--ink);font-family:var(--mono);font-size:.76rem;padding:12px 22px;border-radius:8px;z-index:9000;transition:transform .28s cubic-bezier(.34,1.56,.64,1);white-space:nowrap;max-width:90vw;box-shadow:0 8px 32px rgba(0,0,0,.4);}
+#toast.show{transform:translateX(-50%) translateY(0);}
+#toast.success{border-color:var(--green);color:var(--green);}
+#toast.error{border-color:var(--red);color:var(--red);}
+#toast.info{border-color:var(--gold);color:var(--gold);}
+
+/* SPINNER */
+.spin{display:inline-block;width:12px;height:12px;border:2px solid rgba(0,0,0,.2);border-top-color:currentColor;border-radius:50%;animation:rot .5s linear infinite;}
+@keyframes rot{to{transform:rotate(360deg)}}
+
+/* SCHEDULE */
+.sci{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;margin-bottom:10px;gap:16px;flex-wrap:wrap;}
+
+/* TEST BANNER */
+.tbanner{background:rgba(245,185,68,.06);border:1px solid rgba(245,185,68,.2);border-radius:8px;padding:10px 16px;margin-bottom:20px;font-size:.72rem;color:var(--gold);display:flex;align-items:center;gap:10px;}
+
+/* EMPTY */
+.empty{text-align:center;padding:40px 20px;color:var(--ink3);font-size:.78rem;}
+.ei{font-size:2rem;margin-bottom:10px;opacity:.4;}
+
+/* MISC */
+.two{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+@media(max-width:700px){.two{grid-template-columns:1fr;}}
+.link{color:var(--gold);text-decoration:none;border-bottom:1px solid transparent;transition:border-color .15s;}
+.link:hover{border-bottom-color:var(--gold);}
+.lt{color:var(--teal);}
+.lt:hover{border-bottom-color:var(--teal);}
+@media(max-width:768px){.sidebar{display:none;}.main-content{padding:20px 16px;}.fg{grid-template-columns:1fr;}.s2{grid-column:span 1;}.srow{grid-template-columns:1fr 1fr;}}
+</style>
+</head>
+<body>
+
+<!-- ══ SCREEN 1: LANDING ══════════════════════════════════ -->
+<div id="screen-landing" class="screen active">
+  <div class="landing-badge">Pharos Atlantic · Chain 688689 · Live</div>
+  <h1 class="landing-title">The work platform<br/>that pays in <em>USDC.</em></h1>
+  <p class="landing-sub">Connect employers and freelancers with on-chain payroll, verifiable work history, and instant USDC on Pharos Atlantic.</p>
+  <div class="role-cards">
+    <div class="role-card employer" onclick="startOnboard('employer')">
+      <span class="role-icon">🏢</span>
+      <div class="role-title">I'm an Employer</div>
+      <div class="role-desc">Manage your team, run payroll, and pay globally in USDC.</div>
+      <ul class="role-features">
+        <li>Add &amp; manage employees</li>
+        <li>Single + bulk payroll</li>
+        <li>Schedule recurring payments</li>
+        <li>Spending analytics</li>
+      </ul>
+      <span class="role-cta">Start paying →</span>
+    </div>
+    <div class="role-card worker" onclick="startOnboard('worker')">
+      <span class="role-icon">💼</span>
+      <div class="role-title">I'm a Worker</div>
+      <div class="role-desc">Track income, auto-generate invoices, build on-chain reputation.</div>
+      <ul class="role-features">
+        <li>View all jobs &amp; earnings</li>
+        <li>Auto-generate PDF invoices</li>
+        <li>Build payment history</li>
+        <li>Share proof-of-work profile</li>
+      </ul>
+      <span class="role-cta">View earnings →</span>
+    </div>
+  </div>
+</div>
+
+<!-- ══ SCREEN 2: ONBOARDING ═══════════════════════════════ -->
+<div id="screen-onboard" class="screen">
+  <div class="onboard-box">
+    <button class="onboard-back" onclick="goLanding()">← Back</button>
+    <div class="onboard-title" id="ob-title">Connect as Employer</div>
+    <div class="onboard-sub" id="ob-sub">Connect your wallet to manage payroll on Pharos Atlantic.</div>
+    <div class="f" style="margin-bottom:14px;">
+      <label>Your Name / Company</label>
+      <input id="ob-name" placeholder="e.g. Acme Corp or Damilola Okafor"/>
+    </div>
+    <div class="f" style="margin-bottom:20px;" id="ob-role-wrap">
+      <label>Your Role</label>
+      <select id="ob-role">
+        <option value="">— Select your role —</option>
+        <option>Frontend Developer</option><option>Backend Developer</option>
+        <option>Smart Contract Developer</option><option>UI/UX Designer</option>
+        <option>Product Manager</option><option>Data Analyst</option>
+        <option>DevOps Engineer</option><option>Content Writer</option>
+        <option>Marketing Manager</option><option>Other</option>
+      </select>
+    </div>
+    <button class="wc-btn" id="ob-btn" onclick="connectAndOnboard()">Connect Wallet on Pharos Atlantic</button>
+    <div class="divider"><span>network</span></div>
+    <div style="font-size:.68rem;color:var(--ink3);line-height:2.2;text-align:center;">
+      Chain ID: <span style="color:var(--ink)">688689</span> · RPC: <span style="color:var(--ink)">atlantic.dplabs-internal.com</span><br/>
+      Explorer: <a href="https://pharos-testnet.socialscan.io/" target="_blank" class="link">pharosscan.xyz ↗</a> ·
+      Faucet: <a href="https://testnet.pharosnetwork.xyz" target="_blank" class="link">pharosnetwork.xyz ↗</a>
+    </div>
+  </div>
+</div>
+
+<!-- ══ SCREEN 3: EMPLOYER ═════════════════════════════════ -->
+<div id="screen-employer" class="screen">
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-logo">Pharos<em>Pay</em></div>
+      <div class="brand-role-badge eb">Employer</div>
+    </div>
+    <div class="sidebar-wallet">
+      <div style="font-size:.68rem;color:var(--ink2);margin-bottom:3px;" id="e-company">—</div>
+      <div class="wallet-addr"><div class="wdot"></div><span id="e-wallet">—</span></div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section">Main</div>
+      <button class="nav-item active" onclick="enav('dashboard',this)"><span class="ni">◈</span>Dashboard</button>
+      <button class="nav-item" onclick="enav('employees',this)"><span class="ni">👥</span>Employees<span class="nbadge" id="e-count-badge">0</span></button>
+      <button class="nav-item" onclick="enav('payroll',this)"><span class="ni">💸</span>Run Payroll</button>
+      <button class="nav-item" onclick="enav('history',this)"><span class="ni">📋</span>History</button>
+      <div class="nav-section">Account</div>
+      <button class="nav-item" onclick="enav('profile',this)"><span class="ni">👤</span>Profile</button>
+    </nav>
+    <div class="sidebar-footer">
+      <button class="switch-btn" onclick="goLanding()">⇄ Switch Role</button>
+    </div>
+  </aside>
+  <div class="main-content">
+    <div class="tbanner" id="e-tbanner">🧪 <strong>Test Mode</strong> — payments simulated. Set <code>TEST_MODE=false</code> + deploy USDC to go live.</div>
+
+    <!-- DASHBOARD -->
+    <div class="page active" id="ep-dashboard">
+      <div class="ph"><div><div class="pt">Dashboard</div><div class="ps">Payroll overview · Pharos Atlantic</div></div><button class="btn bg" onclick="enav('payroll',null)">+ Run Payroll</button></div>
+      <div class="srow">
+        <div class="sc"><div class="si">💰</div><div class="sl">Total Disbursed</div><div class="sv">$<span id="e-s-total">0</span></div><div style="font-size:.65rem;color:var(--ink3);margin-top:6px;">USDC on Pharos</div></div>
+        <div class="sc"><div class="si">👥</div><div class="sl">Active Employees</div><div class="sv" id="e-s-emps">0</div><div style="font-size:.65rem;color:var(--ink3);margin-top:6px;">Registered</div></div>
+        <div class="sc"><div class="si">📄</div><div class="sl">Payments Made</div><div class="sv" id="e-s-pays">0</div><div style="font-size:.65rem;color:var(--ink3);margin-top:6px;">All time</div></div>
+        <div class="sc"><div class="si">📅</div><div class="sl">This Month</div><div class="sv">$<span id="e-s-month">0</span></div><div style="font-size:.65rem;color:var(--ink3);margin-top:6px;">USDC sent</div></div>
+      </div>
+      <div class="two">
+        <div class="card"><div class="ch"><div class="ct">Recent Payments</div></div><div id="e-recent"></div></div>
+        <div class="card"><div class="ch"><div class="ct">Monthly Spend</div></div><div class="ibars" id="e-chart"></div><div style="display:flex;justify-content:space-between;margin-top:8px;" id="e-chart-l"></div></div>
+      </div>
+      <div class="card"><div class="ch"><div class="ct">Team Overview</div><button class="btn bgh sm" onclick="enav('employees',null)">View All</button></div><div id="e-team-prev"></div></div>
+    </div>
+
+    <!-- EMPLOYEES -->
+    <div class="page" id="ep-employees">
+      <div class="ph"><div><div class="pt">Employees</div><div class="ps">Manage your team and roles</div></div></div>
+      <div class="two">
+        <div class="card">
+          <div class="ch"><div class="ct">Add Employee</div></div>
+          <div style="display:flex;flex-direction:column;gap:12px;">
+            <div class="f"><label>Full Name</label><input id="e-name" placeholder="e.g. Adaeze Chukwu"/></div>
+            <div class="f"><label>Wallet Address (0x…)</label><input id="e-addr" placeholder="0x…"/></div>
+            <div class="f"><label>Job Role</label>
+              <select id="e-role"><option value="">— Select —</option>
+                <option>Frontend Developer</option><option>Backend Developer</option>
+                <option>Smart Contract Developer</option><option>UI/UX Designer</option>
+                <option>Product Manager</option><option>Data Analyst</option>
+                <option>DevOps Engineer</option><option>Content Writer</option>
+                <option>Marketing Manager</option><option>Other</option>
+              </select>
+            </div>
+            <div class="f"><label>Monthly Rate (USDC)</label><input id="e-rate" type="number" placeholder="e.g. 1500"/></div>
+            <div class="f"><label>Department (optional)</label><input id="e-dept" placeholder="e.g. Engineering"/></div>
+            <button class="btn bg" onclick="addEmployee()" style="width:100%;justify-content:center;">Add Employee</button>
+          </div>
+        </div>
+        <div class="card"><div class="ch"><div class="ct">Registered Employees</div></div><div id="e-list"></div></div>
+      </div>
+    </div>
+
+    <!-- PAYROLL -->
+    <div class="page" id="ep-payroll">
+      <div class="ph"><div><div class="pt">Run Payroll</div><div class="ps">Send USDC to employees</div></div></div>
+      <div class="two">
+        <div class="card">
+          <div class="ch"><div class="ct">Single Payment</div></div>
+          <div style="display:flex;flex-direction:column;gap:12px;">
+            <div class="f"><label>Employee</label><select id="p-emp"><option value="">— Select —</option></select></div>
+            <div class="f"><label>Amount (USDC)</label><input id="p-amt" type="number" placeholder="e.g. 1500"/></div>
+            <div class="f"><label>Description</label><input id="p-desc" placeholder="e.g. April 2026 Salary"/></div>
+            <div class="f"><label>Period</label><input id="p-period" placeholder="e.g. April 1–30, 2026"/></div>
+            <button class="btn bg" id="p-btn" onclick="sendPayment()" style="width:100%;justify-content:center;">Send USDC →</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="ch"><div class="ct">Bulk Payroll</div><button class="btn bgh sm" onclick="prefillBulk()">Auto-fill Rates</button></div>
+          <div id="bulk-list" style="margin-bottom:14px;"></div>
+          <div class="f" style="margin-bottom:12px;"><label>Period</label><input id="bulk-period" placeholder="e.g. April 2026"/></div>
+          <button class="btn bg" id="bulk-btn" onclick="runBulk()" style="width:100%;justify-content:center;">Run Bulk Payroll</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- HISTORY -->
+    <div class="page" id="ep-history">
+      <div class="ph"><div><div class="pt">Payment History</div><div class="ps">All payroll transactions</div></div></div>
+      <div class="card">
+        <div class="tw"><table>
+          <thead><tr><th>Employee</th><th>Role</th><th>Amount</th><th>Description</th><th>Period</th><th>Date</th><th>Status</th><th>Receipt</th></tr></thead>
+          <tbody id="e-hist-tb"></tbody>
+        </table></div>
+      </div>
+    </div>
+
+    <!-- EMPLOYER PROFILE -->
+    <div class="page" id="ep-profile">
+      <div class="ph"><div class="pt">Company Profile</div></div>
+      <div class="phero">
+        <div class="av" id="e-pav" style="width:72px;height:72px;font-size:1.8rem;border:2px solid var(--border2);background:var(--gold-glow);">🏢</div>
+        <div class="pinfo"><div class="pname" id="e-pname">—</div><div class="phandle" id="e-pwallet">—</div><div class="ptags"><span class="badge bag">Employer</span><span class="badge bat">Pharos Atlantic</span></div></div>
+        <div class="repring"><div class="repscore" id="e-rep">—</div><div class="replabel">Workers Paid</div></div>
+      </div>
+      <div class="srow" style="grid-template-columns:repeat(3,1fr);">
+        <div class="sc"><div class="sl">Total Disbursed</div><div class="sv">$<span id="ep-total">0</span></div></div>
+        <div class="sc"><div class="sl">Payments Made</div><div class="sv" id="ep-pays">0</div></div>
+        <div class="sc"><div class="sl">Team Size</div><div class="sv" id="ep-team">0</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ SCREEN 4: WORKER ═══════════════════════════════════ -->
+<div id="screen-worker" class="screen">
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-logo">Pharos<em>Pay</em></div>
+      <div class="brand-role-badge wb">Worker</div>
+    </div>
+    <div class="sidebar-wallet">
+      <div style="font-size:.68rem;color:var(--ink2);margin-bottom:3px;" id="w-name-d">—</div>
+      <div class="wallet-addr"><div class="wdot" style="background:var(--teal);"></div><span id="w-wallet-d">—</span></div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section">Main</div>
+      <button class="nav-item active" onclick="wnav('dashboard',this)"><span class="ni">◈</span>Dashboard</button>
+      <button class="nav-item" onclick="wnav('jobs',this)"><span class="ni">💼</span>My Jobs</button>
+      <button class="nav-item" onclick="wnav('earnings',this)"><span class="ni">📈</span>Earnings</button>
+      <button class="nav-item" onclick="wnav('invoices',this)"><span class="ni">🧾</span>Invoices</button>
+      <div class="nav-section">Account</div>
+      <button class="nav-item" onclick="wnav('profile',this)"><span class="ni">👤</span>Profile</button>
+    </nav>
+    <div class="sidebar-footer">
+      <button class="switch-btn" onclick="goLanding()">⇄ Switch Role</button>
+    </div>
+  </aside>
+  <div class="main-content">
+    <div class="tbanner" id="w-tbanner">🧪 <strong>Test Mode</strong> — simulated payments. Real USDC once deployed on Pharos Atlantic.</div>
+
+    <!-- WORKER DASHBOARD -->
+    <div class="page active" id="wp-dashboard">
+      <div class="ph"><div><div class="pt">Good work, <span id="w-greet">—</span> 👋</div><div class="ps">Earnings overview · Pharos Atlantic</div></div></div>
+      <div class="srow">
+        <div class="sc t"><div class="si">💰</div><div class="sl">Total Earned</div><div class="sv">$<span id="w-s-total">0</span></div><div style="font-size:.65rem;color:var(--ink3);margin-top:6px;">USDC received</div></div>
+        <div class="sc t"><div class="si">📋</div><div class="sl">Jobs Completed</div><div class="sv" id="w-s-jobs">0</div><div style="font-size:.65rem;color:var(--ink3);margin-top:6px;">Paid</div></div>
+        <div class="sc t"><div class="si">🏢</div><div class="sl">Employers</div><div class="sv" id="w-s-emps">0</div><div style="font-size:.65rem;color:var(--ink3);margin-top:6px;">Worked with</div></div>
+        <div class="sc t"><div class="si">📅</div><div class="sl">This Month</div><div class="sv">$<span id="w-s-month">0</span></div><div style="font-size:.65rem;color:var(--ink3);margin-top:6px;">USDC earned</div></div>
+      </div>
+      <div class="two">
+        <div class="card t"><div class="ch"><div class="ct">Recent Payments</div></div><div id="w-recent"></div></div>
+        <div class="card t"><div class="ch"><div class="ct">Income Chart</div></div><div class="ibars" id="w-chart"></div><div style="display:flex;justify-content:space-between;margin-top:8px;" id="w-chart-l"></div></div>
+      </div>
+    </div>
+
+    <!-- JOBS -->
+    <div class="page" id="wp-jobs">
+      <div class="ph"><div><div class="pt">My Jobs</div><div class="ps">All work tied to your wallet</div></div></div>
+      <div class="card t"><div id="w-jobs-list"></div></div>
+    </div>
+
+    <!-- EARNINGS -->
+    <div class="page" id="wp-earnings">
+      <div class="ph"><div><div class="pt">Earnings</div><div class="ps">Income breakdown</div></div></div>
+      <div class="srow" style="grid-template-columns:repeat(3,1fr);">
+        <div class="sc t"><div class="sl">Total Earned</div><div class="sv">$<span id="w-e-total">0</span></div></div>
+        <div class="sc t"><div class="sl">Avg per Payment</div><div class="sv">$<span id="w-e-avg">0</span></div></div>
+        <div class="sc t"><div class="sl">Largest Payment</div><div class="sv">$<span id="w-e-max">0</span></div></div>
+      </div>
+      <div class="card t">
+        <div class="ch"><div class="ct">Payment Breakdown</div></div>
+        <div class="tw"><table>
+          <thead><tr><th>From</th><th>Role</th><th>Amount</th><th>Description</th><th>Period</th><th>Date</th><th>Tx</th></tr></thead>
+          <tbody id="w-earn-tb"></tbody>
+        </table></div>
+      </div>
+    </div>
+
+    <!-- INVOICES -->
+    <div class="page" id="wp-invoices">
+      <div class="ph"><div><div class="pt">Invoices</div><div class="ps">Auto-generated for every payment</div></div></div>
+      <div class="card t"><div id="w-inv-list"></div></div>
+    </div>
+
+    <!-- WORKER PROFILE -->
+    <div class="page" id="wp-profile">
+      <div class="ph"><div class="pt">My Profile</div></div>
+      <div class="phero" style="background:linear-gradient(135deg,var(--surface) 0%,rgba(45,212,192,.06) 100%);">
+        <div class="av" id="w-pav" style="width:72px;height:72px;font-size:1.8rem;border:2px solid rgba(45,212,192,.3);background:rgba(45,212,192,.08);"></div>
+        <div class="pinfo"><div class="pname" id="w-pname">—</div><div class="phandle" id="w-pwallet">—</div><div class="ptags"><span class="badge bat" id="w-prole">Worker</span><span class="badge bam">Pharos Atlantic</span></div></div>
+        <div class="repring" style="border-color:rgba(45,212,192,.2);"><div class="repscore" id="w-rep" style="color:var(--teal);">—</div><div class="replabel">Reputation</div></div>
+      </div>
+      <div class="srow">
+        <div class="sc t"><div class="sl">Total Earned</div><div class="sv">$<span id="wp-total">0</span></div></div>
+        <div class="sc t"><div class="sl">Jobs Done</div><div class="sv" id="wp-jobs">0</div></div>
+        <div class="sc t"><div class="sl">Employers</div><div class="sv" id="wp-emps">0</div></div>
+        <div class="sc t"><div class="sl">Member Since</div><div class="sv" id="wp-since" style="font-size:.9rem;">—</div></div>
+      </div>
+      <div class="card t">
+        <div class="ch"><div class="ct">Share Your Profile</div></div>
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+          <input readonly id="w-plink" style="flex:1;background:var(--bg2);border:1px solid var(--border);color:var(--ink);font-family:var(--mono);font-size:.72rem;padding:9px 13px;border-radius:7px;min-width:180px;" value="—"/>
+          <button class="btn bt sm" onclick="copyPLink()">Copy Link</button>
+        </div>
+        <div style="margin-top:10px;font-size:.72rem;color:var(--ink3);">Share to showcase your on-chain work history and prove income to clients.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ INVOICE MODAL ═════════════════════════════════════ -->
+<div class="moverlay" id="inv-modal">
+  <div class="mbox">
+    <div class="mhead"><div class="mtitle">Payment Invoice</div><button class="mclose" onclick="closeInv()">✕</button></div>
+    <div class="mbody">
+      <div class="invp">
+        <div class="invh">
+          <div><div class="invbrand">Pharos<em>Pay</em></div><div style="font-size:.65rem;color:#999;margin-top:2px;">On-Chain Payroll · Pharos Atlantic</div></div>
+          <div class="invmeta"><div id="inv-num" style="font-weight:700;font-size:.82rem;"></div><div id="inv-date"></div><div style="display:inline-block;background:#111;color:#f5b944;font-size:.58rem;padding:2px 8px;border-radius:3px;letter-spacing:1px;text-transform:uppercase;margin-top:4px;">USDC</div></div>
+        </div>
+        <div class="invamt" id="inv-amt"></div>
+        <div class="invgrid">
+          <div><div class="invsl">From (Employer)</div><div class="invsv" id="inv-from"></div></div>
+          <div><div class="invsl">To (Worker)</div><div class="invsv" id="inv-to"></div></div>
+        </div>
+        <table class="invt">
+          <thead><tr><th>Role</th><th>Description</th><th>Period</th><th>Amount</th></tr></thead>
+          <tbody id="inv-rows"></tbody>
+        </table>
+        <div class="invtotal" id="inv-tot"></div>
+        <div class="invfooter" id="inv-foot"></div>
+      </div>
+    </div>
+    <div class="mfoot">
+      <button class="btn bgh" onclick="closeInv()">Close</button>
+      <button class="btn bg" onclick="printCurrent()">↓ Download PDF</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ══ CONFIG ════════════════════════════════════════════════
+const ATLANTIC = {
+  chainId:'0xa82f1', chainIdDec:688689,
+  chainName:'Pharos Atlantic',
+  rpcUrls:['https://atlantic.dplabs-internal.com'],
+  nativeCurrency:{name:'PHRS',symbol:'PHRS',decimals:18},
+  blockExplorerUrls:['https://pharos-testnet.socialscan.io/'],
+};
+const USDC_ADDRESS = 'PASTE_YOUR_USDC_ADDRESS_HERE';
+const USDC_DECIMALS = 6;
+const TEST_MODE = true;
+const ERC20_ABI = [
+  'function transfer(address to,uint256 amount) returns (bool)',
+  'function balanceOf(address owner) view returns (uint256)',
+];
+
+// ══ STATE ═════════════════════════════════════════════════
+let provider, signer, walletAddress, currentRole, currentUser={};
+
+// ══ DB ════════════════════════════════════════════════════
+const db = {
+  g:(k,d=[])=>{ try{return JSON.parse(localStorage.getItem('pp_'+k))??d;}catch{return d;} },
+  s:(k,v)=>localStorage.setItem('pp_'+k,JSON.stringify(v)),
+  employees:()=>db.g('employees'),
+  payments:()=>db.g('payments'),
+  profile:()=>db.g('profile',{}),
+};
+
+const $=id=>document.getElementById(id);
+
+// ══ ROUTING ═══════════════════════════════════════════════
+function show(id){ document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active')); $(id).classList.add('active'); }
+function goLanding(){ show('screen-landing'); currentRole=null; }
+
+function startOnboard(role){
+  currentRole=role;
+  $('ob-title').textContent=role==='employer'?'Connect as Employer':'Connect as Worker';
+  $('ob-sub').textContent=role==='employer'?'Connect your wallet to manage payroll on Pharos Atlantic.':'Connect your wallet to track earnings and generate invoices.';
+  $('ob-role-wrap').style.display=role==='worker'?'':'none';
+  const btn=$('ob-btn');
+  btn.className='wc-btn'+(role==='worker'?' teal':'');
+  show('screen-onboard');
+}
+
+// ══ WALLET ════════════════════════════════════════════════
+async function connectAndOnboard(){
+  const name=$('ob-name').value.trim();
+  if(!name){toast('Enter your name or company name','error');return;}
+  const btn=$('ob-btn');
+  btn.disabled=true; btn.innerHTML='<span class="spin"></span> Connecting…';
+  try{
+    if(!window.ethereum) throw new Error('MetaMask not found. Install at metamask.io');
+    provider=new ethers.providers.Web3Provider(window.ethereum);
+    await provider.send('eth_requestAccounts',[]);
+    await switchNet();
+    provider=new ethers.providers.Web3Provider(window.ethereum);
+    signer=provider.getSigner();
+    walletAddress=await signer.getAddress();
+    const role=$('ob-role').value||'Worker';
+    currentUser={name,role,wallet:walletAddress,joinedAt:Date.now()};
+    db.s('profile',currentUser);
+    currentRole==='employer'?enterEmployer():enterWorker();
+  }catch(e){ toast(e.message,'error'); }
+  finally{ btn.disabled=false; btn.innerHTML='Connect Wallet on Pharos Atlantic'; }
+}
+
+async function switchNet(){
+  try{ await window.ethereum.request({method:'wallet_switchEthereumChain',params:[{chainId:ATLANTIC.chainId}]}); }
+  catch(e){ if(e.code===4902) await window.ethereum.request({method:'wallet_addEthereumChain',params:[ATLANTIC]}); else throw e; }
+}
+
+// ══ EMPLOYER ══════════════════════════════════════════════
+function enterEmployer(){
+  $('e-company').textContent=currentUser.name;
+  $('e-wallet').textContent=walletAddress.slice(0,6)+'…'+walletAddress.slice(-4);
+  if(!TEST_MODE) $('e-tbanner').style.display='none';
+  show('screen-employer');
+  refreshE(); toast('Welcome, '+currentUser.name+' 👋');
+}
+
+function enav(page, btn){
+  document.querySelectorAll('#screen-employer .nav-item').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  else { const items=document.querySelectorAll('#screen-employer .nav-item'); const map={dashboard:0,employees:1,payroll:2,history:3,profile:4}; if(map[page]!==undefined) items[map[page]].classList.add('active'); }
+  document.querySelectorAll('#screen-employer .page').forEach(p=>p.classList.remove('active'));
+  $('ep-'+page).classList.add('active');
+  if(page==='payroll'){renderBulk();fillEmpSelect();}
+  if(page==='history') renderEHistory();
+  if(page==='employees'){renderEList();fillEmpSelect();}
+  if(page==='profile') renderEProfile();
+  if(page==='dashboard') refreshE();
+}
+
+function refreshE(){
+  const emps=db.employees(), pays=db.payments();
+  const total=pays.reduce((s,p)=>s+p.amount,0);
+  const now=new Date(),m=now.getMonth(),y=now.getFullYear();
+  const month=pays.filter(p=>{const d=new Date(p.timestamp);return d.getMonth()===m&&d.getFullYear()===y;}).reduce((s,p)=>s+p.amount,0);
+  $('e-s-total').textContent=total.toLocaleString();
+  $('e-s-emps').textContent=emps.length;
+  $('e-s-pays').textContent=pays.length;
+  $('e-s-month').textContent=month.toLocaleString();
+  $('e-count-badge').textContent=emps.length;
+  renderERecent(); renderETeam(); renderEChart();
+}
+
+function renderERecent(){
+  const pays=db.payments().slice(0,5), el=$('e-recent');
+  if(!pays.length){el.innerHTML='<div class="empty"><div class="ei">💸</div>No payments yet.</div>';return;}
+  el.innerHTML=pays.map(p=>`
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border);gap:12px;">
+      <div style="display:flex;align-items:center;gap:10px;">${avEl(p.toName,28)}
+        <div><div style="font-size:.8rem;font-weight:500;">${p.toName}</div><div style="font-size:.65rem;color:var(--ink3);">${p.description}</div></div>
+      </div>
+      <div style="text-align:right;flex-shrink:0;"><div style="font-family:var(--serif);color:var(--gold);">$${p.amount.toLocaleString()}</div><div style="font-size:.62rem;color:var(--ink3);">${fmtD(p.timestamp)}</div></div>
+    </div>`).join('');
+}
+
+function renderETeam(){
+  const emps=db.employees().slice(0,5), pays=db.payments(), el=$('e-team-prev');
+  if(!emps.length){el.innerHTML='<div class="empty"><div class="ei">👥</div>Add employees to get started.</div>';return;}
+  el.innerHTML=`<div class="tw"><table>
+    <thead><tr><th>Name</th><th>Role</th><th>Rate/mo</th><th>Total Paid</th></tr></thead>
+    <tbody>${emps.map(e=>{
+      const tot=pays.filter(p=>p.to.toLowerCase()===e.address.toLowerCase()).reduce((s,p)=>s+p.amount,0);
+      return `<tr><td style="display:flex;align-items:center;gap:10px;padding:10px 14px;">${avEl(e.name,28)}<span style="font-size:.82rem;">${e.name}</span></td>
+      <td><span class="badge bag">${e.role}</span></td>
+      <td style="font-family:var(--serif);color:var(--gold);">$${e.rate.toLocaleString()}</td>
+      <td style="color:var(--green);">$${tot.toLocaleString()}</td></tr>`;
+    }).join('')}</tbody></table></div>`;
+}
+
+function renderEChart(){
+  const pays=db.payments(); const months=last6(pays);
+  const max=Math.max(...months.map(m=>m.t),1);
+  $('e-chart').innerHTML=months.map(m=>`<div class="ibw"><div class="ib gold" style="height:${Math.max((m.t/max)*80,4)}px;" title="$${m.t}"></div></div>`).join('');
+  $('e-chart-l').innerHTML=months.map(m=>`<div style="font-size:.58rem;color:var(--ink3);flex:1;text-align:center;">${m.l}</div>`).join('');
+}
+
+function addEmployee(){
+  const name=$('e-name').value.trim(), addr=$('e-addr').value.trim(), role=$('e-role').value, rate=parseFloat($('e-rate').value), dept=$('e-dept').value.trim();
+  if(!name||!addr||!role||!rate){toast('Fill all required fields','error');return;}
+  if(!ethers.utils.isAddress(addr)){toast('Invalid wallet address','error');return;}
+  const emps=db.employees();
+  if(emps.find(e=>e.address.toLowerCase()===addr.toLowerCase())){toast('Employee already exists','error');return;}
+  emps.unshift({id:'EMP-'+Date.now(),name,address:addr,role,rate,dept,addedAt:Date.now()});
+  db.s('employees',emps);
+  ['e-name','e-addr','e-rate','e-dept'].forEach(id=>$(id).value=''); $('e-role').value='';
+  renderEList(); fillEmpSelect(); refreshE(); toast(name+' added to payroll ✓');
+}
+
+function removeEmployee(id){
+  if(!confirm('Remove this employee?'))return;
+  db.s('employees',db.employees().filter(e=>e.id!==id));
+  renderEList();fillEmpSelect();refreshE();toast('Employee removed');
+}
+
+function renderEList(){
+  const emps=db.employees(), pays=db.payments(), el=$('e-list');
+  if(!emps.length){el.innerHTML='<div class="empty"><div class="ei">👤</div>No employees yet.</div>';return;}
+  el.innerHTML=emps.map(e=>{
+    const tot=pays.filter(p=>p.to.toLowerCase()===e.address.toLowerCase()).reduce((s,p)=>s+p.amount,0);
+    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:12px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;margin-bottom:8px;gap:12px;">
+      <div style="display:flex;align-items:center;gap:10px;">${avEl(e.name,36)}
+        <div><div style="font-size:.82rem;font-weight:500;">${e.name}</div><div style="font-size:.65rem;color:var(--teal);">${e.role}</div><div style="font-size:.62rem;color:var(--ink3);">${e.address.slice(0,10)}…${e.address.slice(-6)}</div></div>
+      </div>
+      <div style="text-align:right;flex-shrink:0;">
+        <div style="font-family:var(--serif);color:var(--gold);">$${e.rate.toLocaleString()}/mo</div>
+        <div style="font-size:.62rem;color:var(--green);">$${tot.toLocaleString()} total</div>
+        <button class="btn bd xs" style="margin-top:6px;" onclick="removeEmployee('${e.id}')">Remove</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function fillEmpSelect(){
+  const emps=db.employees(), sel=$('p-emp');
+  sel.innerHTML='<option value="">— Select employee —</option>'+emps.map(e=>`<option value="${e.address}" data-name="${e.name}" data-role="${e.role}" data-rate="${e.rate}">${e.name} · ${e.role}</option>`).join('');
+  sel.onchange=()=>{const o=sel.selectedOptions[0];if(o.dataset.rate)$('p-amt').value=o.dataset.rate;};
+}
+
+async function sendPayment(){
+  const sel=$('p-emp'), toAddr=sel.value, name=sel.selectedOptions[0]?.dataset?.name, role=sel.selectedOptions[0]?.dataset?.role||'—';
+  const amount=parseFloat($('p-amt').value), desc=$('p-desc').value.trim()||'Salary payment', period=$('p-period').value.trim()||'Current period';
+  if(!toAddr){toast('Select an employee','error');return;}
+  if(!amount||amount<=0){toast('Enter a valid amount','error');return;}
+  const btn=$('p-btn'); btn.disabled=true; btn.innerHTML='<span class="spin"></span> Sending…';
+  try{
+    const p=await doPay({toAddr,toName:name,role,amount,desc,period});
+    savePay(p); toast(`$${amount} USDC sent to ${name} ✓`,'success');
+    $('p-amt').value='';$('p-desc').value='';$('p-period').value='';
+    showInv(p); refreshE();
+  }catch(e){toast(e.message,'error');}
+  finally{btn.disabled=false;btn.innerHTML='Send USDC →';}
+}
+
+function renderBulk(){
+  const emps=db.employees(), el=$('bulk-list');
+  if(!emps.length){el.innerHTML='<div class="empty" style="padding:20px;"><div class="ei" style="font-size:1.2rem;">📋</div>Add employees first.</div>';return;}
+  el.innerHTML=emps.map(e=>`
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);">
+      <input type="checkbox" class="bk-cb" data-addr="${e.address}" data-name="${e.name}" data-role="${e.role}" checked style="width:16px;height:16px;accent-color:var(--gold);">
+      <div style="flex:1;font-size:.78rem;">${e.name} <span style="color:var(--ink3);">·</span> <span style="color:var(--teal);font-size:.7rem;">${e.role}</span></div>
+      <input type="number" class="bk-amt" data-addr="${e.address}" value="${e.rate}" style="width:90px;background:var(--bg2);border:1px solid var(--border);color:var(--gold);font-family:var(--mono);font-size:.78rem;padding:5px 8px;border-radius:5px;text-align:right;"/>
+    </div>`).join('');
+}
+function prefillBulk(){renderBulk();toast('Filled with monthly rates');}
+
+async function runBulk(){
+  const period=$('bulk-period').value.trim()||'Current Period';
+  const cbs=[...document.querySelectorAll('.bk-cb:checked')];
+  if(!cbs.length){toast('Select at least one employee','error');return;}
+  const btn=$('bulk-btn'); btn.disabled=true; btn.innerHTML=`<span class="spin"></span> Processing ${cbs.length} payments…`;
+  let ok=0,fail=0;
+  for(const cb of cbs){
+    const ai=document.querySelector(`.bk-amt[data-addr="${cb.dataset.addr}"]`);
+    const amt=parseFloat(ai?.value||0); if(!amt) continue;
+    try{const p=await doPay({toAddr:cb.dataset.addr,toName:cb.dataset.name,role:cb.dataset.role,amount:amt,desc:`${period} Salary`,period});savePay(p);ok++;}
+    catch{fail++;}
+  }
+  btn.disabled=false;btn.innerHTML='Run Bulk Payroll';
+  toast(`Bulk done: ${ok} paid${fail?' · '+fail+' failed':''}`,ok?'success':'error');
+  refreshE();
+}
+
+async function doPay({toAddr,toName,role,amount,desc,period}){
+  if(TEST_MODE){
+    await new Promise(r=>setTimeout(r,900+Math.random()*700));
+    return{id:'PAY-'+Date.now(),from:walletAddress||'0x'+'a'.repeat(40),fromName:currentUser.name||'Employer',to:toAddr,toName,role,amount,description:desc,period,txHash:'0x'+'f'.repeat(64-Math.floor(Math.random()*4))+Math.random().toString(16).slice(2,6),block:Math.floor(Math.random()*900000+100000),timestamp:Date.now(),status:'confirmed',testMode:true};
+  }
+  if(USDC_ADDRESS==='PASTE_YOUR_USDC_ADDRESS_HERE') throw new Error('Set USDC_ADDRESS first');
+  const usdc=new ethers.Contract(USDC_ADDRESS,ERC20_ABI,signer);
+  const bal=await usdc.balanceOf(walletAddress);
+  const amt=ethers.utils.parseUnits(String(amount),USDC_DECIMALS);
+  if(bal.lt(amt)) throw new Error('Insufficient USDC balance');
+  const tx=await usdc.transfer(toAddr,amt); const rx=await tx.wait();
+  return{id:'PAY-'+Date.now(),from:walletAddress,fromName:currentUser.name||'Employer',to:toAddr,toName,role,amount,description:desc,period,txHash:rx.transactionHash,block:rx.blockNumber,timestamp:Date.now(),status:'confirmed',testMode:false};
+}
+
+function savePay(p){const pays=db.payments();pays.unshift(p);db.s('payments',pays);}
+
+function renderEHistory(){
+  const pays=db.payments(), tb=$('e-hist-tb');
+  if(!pays.length){tb.innerHTML='<tr><td colspan="8"><div class="empty">No payments yet.</div></td></tr>';return;}
+  tb.innerHTML=pays.map(p=>`<tr>
+    <td><div style="font-weight:500;font-size:.8rem;">${p.toName}</div><div style="font-size:.62rem;color:var(--ink3);">${p.to.slice(0,8)}…${p.to.slice(-4)}</div></td>
+    <td><span class="badge bag">${p.role}</span></td>
+    <td style="font-family:var(--serif);color:var(--gold);">$${p.amount.toLocaleString()}</td>
+    <td style="font-size:.75rem;color:var(--ink2);">${p.description}</td>
+    <td style="font-size:.72rem;color:var(--ink3);">${p.period}</td>
+    <td style="font-size:.7rem;">${fmtD(p.timestamp)}</td>
+    <td>${p.testMode?'<span class="badge bam">Simulated</span>':'<span class="badge bav">Confirmed</span>'}</td>
+    <td><button class="btn bgh xs" onclick='showInv(${JSON.stringify(p)})'>🧾</button></td>
+  </tr>`).join('');
+}
+
+function renderEProfile(){
+  const pays=db.payments(),emps=db.employees(),total=pays.reduce((s,p)=>s+p.amount,0),uniq=[...new Set(pays.map(p=>p.to))].length;
+  $('e-pname').textContent=currentUser.name||'—'; $('e-pwallet').textContent=walletAddress||'—';
+  $('e-rep').textContent=uniq; $('ep-total').textContent=total.toLocaleString();
+  $('ep-pays').textContent=pays.length; $('ep-team').textContent=emps.length;
+}
+
+// ══ WORKER ════════════════════════════════════════════════
+function enterWorker(){
+  $('w-name-d').textContent=currentUser.name; $('w-wallet-d').textContent=walletAddress.slice(0,6)+'…'+walletAddress.slice(-4);
+  $('w-greet').textContent=currentUser.name.split(' ')[0];
+  if(!TEST_MODE) $('w-tbanner').style.display='none';
+  show('screen-worker'); refreshW(); toast('Welcome back, '+currentUser.name+' 👋');
+}
+
+function wnav(page,btn){
+  document.querySelectorAll('#screen-worker .nav-item').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  document.querySelectorAll('#screen-worker .page').forEach(p=>p.classList.remove('active'));
+  $('wp-'+page).classList.add('active');
+  if(page==='dashboard') refreshW();
+  if(page==='jobs') renderWJobs();
+  if(page==='earnings') renderWEarnings();
+  if(page==='invoices') renderWInvoices();
+  if(page==='profile') renderWProfile();
+}
+
+function myPays(){
+  if(!walletAddress) return db.payments();
+  return db.payments().filter(p=>p.to.toLowerCase()===walletAddress.toLowerCase());
+}
+
+function refreshW(){
+  const pays=myPays(),total=pays.reduce((s,p)=>s+p.amount,0);
+  const now=new Date(),m=now.getMonth(),y=now.getFullYear();
+  const month=pays.filter(p=>{const d=new Date(p.timestamp);return d.getMonth()===m&&d.getFullYear()===y;}).reduce((s,p)=>s+p.amount,0);
+  const emps=[...new Set(pays.map(p=>p.from))].length;
+  $('w-s-total').textContent=total.toLocaleString(); $('w-s-jobs').textContent=pays.length;
+  $('w-s-emps').textContent=emps; $('w-s-month').textContent=month.toLocaleString();
+  renderWRecent(); renderWChart();
+}
+
+function renderWRecent(){
+  const pays=myPays().slice(0,5),el=$('w-recent');
+  if(!pays.length){el.innerHTML='<div class="empty"><div class="ei">💼</div>No payments received yet.</div>';return;}
+  el.innerHTML=pays.map(p=>`
+    <div class="jc ${p.testMode?'pending':'paid'}">
+      <div><div class="jt">${p.description}</div><div class="je">from ${p.fromName||p.from.slice(0,10)+'…'} · <span class="jp_">${p.period}</span></div></div>
+      <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
+        <div style="text-align:right;"><div class="jamount">$${p.amount.toLocaleString()}</div><div style="font-size:.62rem;color:var(--ink3);">${p.testMode?'simulated':'USDC'}</div></div>
+        <button class="btn bt xs" onclick='showInv(${JSON.stringify(p)})'>Invoice</button>
+      </div>
+    </div>`).join('');
+}
+
+function renderWChart(){
+  const pays=myPays(),months=last6(pays),max=Math.max(...months.map(m=>m.t),1);
+  $('w-chart').innerHTML=months.map(m=>`<div class="ibw"><div class="ib" style="height:${Math.max((m.t/max)*80,4)}px;" title="$${m.t}"></div></div>`).join('');
+  $('w-chart-l').innerHTML=months.map(m=>`<div style="font-size:.58rem;color:var(--ink3);flex:1;text-align:center;">${m.l}</div>`).join('');
+}
+
+function renderWJobs(){
+  const pays=myPays(),el=$('w-jobs-list');
+  if(!pays.length){el.innerHTML='<div class="empty"><div class="ei">💼</div>No jobs found. Ask your employer to add you and run payroll.</div>';return;}
+  el.innerHTML=pays.map(p=>`
+    <div class="jc ${p.testMode?'pending':'paid'}">
+      <div><div class="jt"><strong>${p.role}</strong> — ${p.description}</div><div class="je">from ${p.fromName||p.from.slice(0,10)+'…'}</div><div class="jp_">📅 ${p.period} · ${fmtD(p.timestamp)}</div></div>
+      <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
+        <div style="text-align:right;"><div class="jamount">$${p.amount.toLocaleString()}</div><span class="${p.testMode?'badge bam':'badge bav'}">${p.testMode?'Simulated':'Paid'}</span></div>
+        <button class="btn bt xs" onclick='showInv(${JSON.stringify(p)})'>🧾</button>
+      </div>
+    </div>`).join('');
+}
+
+function renderWEarnings(){
+  const pays=myPays(),total=pays.reduce((s,p)=>s+p.amount,0),avg=pays.length?Math.round(total/pays.length):0,mx=pays.length?Math.max(...pays.map(p=>p.amount)):0;
+  $('w-e-total').textContent=total.toLocaleString(); $('w-e-avg').textContent=avg.toLocaleString(); $('w-e-max').textContent=mx.toLocaleString();
+  const tb=$('w-earn-tb');
+  if(!pays.length){tb.innerHTML='<tr><td colspan="7"><div class="empty">No earnings yet.</div></td></tr>';return;}
+  tb.innerHTML=pays.map(p=>`<tr>
+    <td style="font-size:.78rem;">${p.fromName||p.from.slice(0,10)+'…'}</td>
+    <td><span class="badge bat">${p.role}</span></td>
+    <td style="font-family:var(--serif);color:var(--teal);">$${p.amount.toLocaleString()}</td>
+    <td style="font-size:.75rem;">${p.description}</td>
+    <td style="font-size:.7rem;color:var(--ink3);">${p.period}</td>
+    <td style="font-size:.7rem;">${fmtD(p.timestamp)}</td>
+    <td>${p.testMode?'—':`<a href="https://pharos-testnet.socialscan.io/tx/${p.txHash}" target="_blank" class="link lt" style="font-size:.65rem;">${p.txHash.slice(0,8)}…↗</a>`}</td>
+  </tr>`).join('');
+}
+
+function renderWInvoices(){
+  const pays=myPays(),el=$('w-inv-list');
+  if(!pays.length){el.innerHTML='<div class="empty"><div class="ei">🧾</div>No invoices yet. They auto-generate with each payment.</div>';return;}
+  el.innerHTML=pays.map((p,i)=>`
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;margin-bottom:10px;gap:16px;flex-wrap:wrap;">
+      <div style="display:flex;align-items:center;gap:14px;">
+        <div style="font-size:1.6rem;opacity:.5;">🧾</div>
+        <div><div style="font-weight:500;font-size:.82rem;">Invoice #${String(pays.length-i).padStart(4,'0')}</div>
+          <div style="font-size:.7rem;color:var(--ink3);">${p.description} · ${p.period}</div>
+          <div style="font-size:.68rem;color:var(--ink3);">${fmtD(p.timestamp)}</div></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
+        <div style="font-family:var(--serif);font-size:1.1rem;color:var(--teal);">$${p.amount.toLocaleString()} USDC</div>
+        <button class="btn bt sm" onclick='showInv(${JSON.stringify(p)})'>View</button>
+        <button class="btn bgh sm" onclick='printInvoice(${JSON.stringify(p)})'>↓ PDF</button>
+      </div>
+    </div>`).join('');
+}
+
+function renderWProfile(){
+  const pays=myPays(),total=pays.reduce((s,p)=>s+p.amount,0),emps=[...new Set(pays.map(p=>p.from))].length;
+  const rep=Math.min(Math.round(pays.length*10+emps*15+total/100),999);
+  const init=(currentUser.name||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+  const since=currentUser.joinedAt?new Date(currentUser.joinedAt).toLocaleString('default',{month:'short',year:'numeric'}):'—';
+  $('w-pav').textContent=init; $('w-pname').textContent=currentUser.name||'—';
+  $('w-pwallet').textContent=walletAddress||'—'; $('w-prole').textContent=currentUser.role||'Worker';
+  $('w-rep').textContent=rep; $('wp-total').textContent=total.toLocaleString();
+  $('wp-jobs').textContent=pays.length; $('wp-emps').textContent=emps; $('wp-since').textContent=since;
+  $('w-plink').value=`${location.origin}?worker=${walletAddress||'demo'}`;
+}
+function copyPLink(){navigator.clipboard.writeText($('w-plink').value).then(()=>toast('Profile link copied!','info'));}
+
+// ══ INVOICE MODAL ═════════════════════════════════════════
+let _cp=null;
+function showInv(p){
+  _cp=p;
+  const idx=db.payments().findIndex(x=>x.id===p.id);
+  const num='INV-'+String(Math.max(idx+1,1)).padStart(6,'0');
+  $('inv-num').textContent=num; $('inv-date').textContent=fmtD(p.timestamp);
+  $('inv-amt').textContent=`$${p.amount.toLocaleString('en-US',{minimumFractionDigits:2})} USDC`;
+  $('inv-from').innerHTML=`${p.fromName||'Employer'}<br><small style="color:#999;font-weight:400;">${p.from}</small>`;
+  $('inv-to').innerHTML=`${p.toName||'Worker'}<br><small style="color:#999;font-weight:400;">${p.to}</small>`;
+  $('inv-rows').innerHTML=`<tr><td>${p.role}</td><td>${p.description}</td><td>${p.period}</td><td style="font-weight:600;">$${p.amount.toLocaleString()}.00</td></tr>`;
+  $('inv-tot').textContent=`Total: $${p.amount.toLocaleString()}.00 USDC`;
+  $('inv-foot').innerHTML=`Network: Pharos Atlantic · Chain ID 688689${p.testMode?' · Test Mode (Simulated)':' · Tx: '+p.txHash}`;
+  $('inv-modal').classList.add('open');
+}
+function closeInv(){$('inv-modal').classList.remove('open');}
+function printCurrent(){if(_cp) printInvoice(_cp);}
+
+function printInvoice(p){
+  const num='INV-'+Date.now();
+  const w=window.open('','_blank');
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>${num}</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@300;500;700&family=JetBrains+Mono:wght@300;400&display=swap" rel="stylesheet"/>
+<style>*{margin:0;padding:0;box-sizing:border-box;}body{font-family:'JetBrains Mono',monospace;background:#fff;color:#111;padding:60px;font-size:13px;}.brand{font-family:'Fraunces',serif;font-size:2rem;font-weight:700;letter-spacing:-1px;}.brand em{color:#c9941a;font-style:normal;}.head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:40px;border-bottom:3px solid #111;padding-bottom:24px;}.badge{background:#111;color:#f5b944;font-size:.58rem;letter-spacing:1.5px;text-transform:uppercase;padding:4px 10px;border-radius:4px;}.amount{font-family:'Fraunces',serif;font-size:3rem;color:#c9941a;margin:20px 0;}.grid{display:grid;grid-template-columns:1fr 1fr;gap:32px;margin-bottom:28px;}.lbl{font-size:.6rem;text-transform:uppercase;letter-spacing:1px;color:#999;margin-bottom:4px;}.val{font-size:.82rem;font-weight:600;line-height:1.6;}table{width:100%;border-collapse:collapse;margin-bottom:20px;}th{font-size:.6rem;text-transform:uppercase;letter-spacing:1px;color:#999;border-bottom:2px solid #eee;padding:6px 0;text-align:left;}td{padding:10px 0;border-bottom:1px solid #f5f5f5;}.total{text-align:right;font-family:'Fraunces',serif;font-size:1.2rem;font-weight:700;border-top:2px solid #111;padding-top:10px;margin-top:4px;}.foot{margin-top:40px;font-size:.6rem;color:#bbb;border-top:1px solid #eee;padding-top:14px;}@media print{body{padding:40px;}}</style></head><body>
+<div class="head"><div><div class="brand">Pharos<em>Pay</em></div><div style="font-size:.65rem;color:#999;margin-top:4px;">Work Platform · Pharos Atlantic</div></div>
+<div style="text-align:right;"><div class="badge">PAYMENT RECEIPT</div><div style="margin-top:8px;font-size:.7rem;color:#666;">${num}</div><div style="font-size:.68rem;color:#999;">${fmtD(p.timestamp)}</div></div></div>
+<div class="amount">$${p.amount.toLocaleString('en-US',{minimumFractionDigits:2})} USDC</div>
+<div class="grid">
+<div><div class="lbl">Bill To (Employer)</div><div class="val">${p.fromName||'Employer'}<br/><span style="font-weight:400;color:#666;font-size:.72rem;">${p.from}</span></div></div>
+<div><div class="lbl">Invoice From (Worker)</div><div class="val">${p.toName||'Worker'}<br/><span style="font-weight:400;color:#666;font-size:.72rem;">${p.to}</span></div></div>
+</div>
+<table><thead><tr><th>Role</th><th>Description</th><th>Period</th><th>Amount (USDC)</th></tr></thead>
+<tbody><tr><td>${p.role}</td><td>${p.description}</td><td>${p.period}</td><td style="font-weight:600;">$${p.amount.toLocaleString()}.00</td></tr></tbody></table>
+<div class="total">Total: $${p.amount.toLocaleString()}.00 USDC</div>
+<div class="foot">Network: Pharos Atlantic · Chain ID: 688689 · ${p.testMode?'Test Mode (Simulated)':'Tx: '+p.txHash+' · Block: '+p.block}<br/>Verify at testnet.pharosscan.xyz · Generated by PharosPay</div>
+</body></html>`);
+  w.document.close(); w.onload=()=>w.print();
+}
+
+// ══ HELPERS ═══════════════════════════════════════════════
+function fmtD(ts){return new Date(ts).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});}
+function last6(pays){
+  const now=new Date();
+  return Array.from({length:6},(_,i)=>{
+    const d=new Date(now.getFullYear(),now.getMonth()-5+i,1);
+    const t=pays.filter(p=>{const pd=new Date(p.timestamp);return pd.getMonth()===d.getMonth()&&pd.getFullYear()===d.getFullYear();}).reduce((s,p)=>s+p.amount,0);
+    return{l:d.toLocaleString('default',{month:'short'}),t};
+  });
+}
+function avEl(name,size=36){
+  const init=(name||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+  const hue=[...(name||'')].reduce((h,c)=>h+c.charCodeAt(0),0)%360;
+  return `<div class="av" style="width:${size}px;height:${size}px;background:hsl(${hue},40%,20%);color:hsl(${hue},70%,70%);font-size:${size*.35}px;">${init}</div>`;
+}
+function toast(msg,type='info'){
+  const el=$('toast'); el.textContent=msg; el.className=`toast show ${type}`;
+  clearTimeout(el._t); el._t=setTimeout(()=>el.className='toast',3500);
+}
+
+// ══ INIT ══════════════════════════════════════════════════
+window.addEventListener('DOMContentLoaded',()=>{
+  // Ensure role cards are clickable via JS listeners (belt-and-suspenders)
+  document.querySelectorAll('.role-card').forEach(card=>{
+    card.addEventListener('click',()=>{
+      const role=card.classList.contains('employer')?'employer':'worker';
+      startOnboard(role);
+    });
+  });
+  if(window.ethereum){
+    window.ethereum.on('accountsChanged',()=>location.reload());
+    window.ethereum.on('chainChanged',()=>location.reload());
+  }
+});
+</script>
+</body>
+</html>

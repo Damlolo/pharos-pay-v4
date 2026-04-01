@@ -1,0 +1,7 @@
+{
+  "name": "pharospay",
+  "version": "1.0.0",
+  "description": "USDC Payroll System on Pharos Network",
+  "license": "MIT",
+  "keywords": ["pharos", "usdc", "payroll", "web3", "defi"]
+}
