@@ -594,11 +594,16 @@ tr:hover td{background:rgba(255,255,255,.015);}
 <script>
 // ══ CONFIG ════════════════════════════════════════════════
 const ATLANTIC = {
-  chainId:'0xa82f1', chainIdDec:688689,
-  chainName:'Pharos Atlantic',
-  rpcUrls:['https://atlantic.dplabs-internal.com'],
-  nativeCurrency:{name:'PHRS',symbol:'PHRS',decimals:18},
-  blockExplorerUrls:['https://testnet.pharosscan.xyz'],
+  chainId:'0xa82f1',
+  chainIdDec:688689,
+  chainName:'Pharos Atlantic Testnet',
+  rpcUrls:[
+    'https://atlantic.dplabs-internal.com',
+    'https://atlantic.pharos.sh',
+    'https://rpc.atlantic.pharosnetwork.xyz',
+  ],
+  nativeCurrency:{name:'Pharos',symbol:'PHRS',decimals:18},
+  blockExplorerUrls:['https://atlantic.pharosscan.xyz'],
 };
 const USDC_ADDRESS = 'PASTE_YOUR_USDC_ADDRESS_HERE';
 const USDC_DECIMALS = 6;
@@ -1049,16 +1054,34 @@ async function manualSwitchNet(){
   if(!wp){toast('No wallet connected','error');return;}
   toast('Switching to Pharos Atlantic…','info');
   try{
+    // Try switching first (network already added in wallet)
     await wp.request({method:'wallet_switchEthereumChain',params:[{chainId:ATLANTIC.chainId}]});
     toast('Switched to Pharos Atlantic ✓','success');
     checkNetwork();
   }catch(e){
-    if(e.code===4902||e.code===-32603){
-      try{
-        await wp.request({method:'wallet_addEthereumChain',params:[ATLANTIC]});
-        toast('Pharos Atlantic added & switched ✓','success');
-        checkNetwork();
-      }catch(e2){ toast(e2.message||'Failed to add network','error'); }
+    if(e.code===4902||e.code===-32603||e.code===4001){
+      if(e.code===4001){toast('Switch rejected by user','error');return;}
+      // Network not added yet — try each RPC until one works
+      let added=false;
+      for(const rpc of ATLANTIC.rpcUrls){
+        try{
+          await wp.request({method:'wallet_addEthereumChain',params:[{
+            chainId:ATLANTIC.chainId,
+            chainName:ATLANTIC.chainName,
+            rpcUrls:[rpc],
+            nativeCurrency:ATLANTIC.nativeCurrency,
+            blockExplorerUrls:ATLANTIC.blockExplorerUrls,
+          }]});
+          added=true;
+          toast('Pharos Atlantic added & switched ✓','success');
+          checkNetwork();
+          break;
+        }catch(e2){
+          if(e2.code===4001){toast('Rejected by user','error');return;}
+          // Try next RPC
+        }
+      }
+      if(!added) toast('Could not add Pharos Atlantic — try adding manually in your wallet','error');
     } else {
       toast(e.message||'Switch failed','error');
     }
