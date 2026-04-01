@@ -120,8 +120,8 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9999;o
 .ps{color:var(--ink3);font-size:.75rem;margin-top:4px;}
 
 /* STATS */
-.srow{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px;}
-@media(max-width:900px){.srow{grid-template-columns:repeat(2,1fr);}}
+.srow{display:grid;grid-template-columns:repeat(5,1fr);gap:16px;margin-bottom:24px;}
+@media(max-width:1100px){.srow{grid-template-columns:repeat(3,1fr);}}@media(max-width:700px){.srow{grid-template-columns:repeat(2,1fr);}}
 .sc{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:20px;position:relative;overflow:hidden;}
 .sc::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--gold),transparent);}
 .sc.t::before{background:linear-gradient(90deg,var(--teal),transparent);}
@@ -367,6 +367,7 @@ tr:hover td{background:rgba(255,255,255,.015);}
     <div class="page active" id="ep-dashboard">
       <div class="ph"><div><div class="pt">Dashboard</div><div class="ps">Payroll overview · Pharos Atlantic</div></div><button class="btn bg" onclick="enav('payroll',null)">+ Run Payroll</button></div>
       <div class="srow">
+        <div class="sc"><div class="si">💳</div><div class="sl">Wallet Balance</div><div class="sv"><span id="e-s-usdc">—</span><span style="font-size:.9rem;color:var(--ink3);margin-left:4px;">USDC</span></div><div style="font-size:.65rem;color:var(--ink3);margin-top:6px;">Available to pay</div></div>
         <div class="sc"><div class="si">💰</div><div class="sl">Total Disbursed</div><div class="sv">$<span id="e-s-total">0</span></div><div style="font-size:.65rem;color:var(--ink3);margin-top:6px;">USDC on Pharos</div></div>
         <div class="sc"><div class="si">👥</div><div class="sl">Active Employees</div><div class="sv" id="e-s-emps">0</div><div style="font-size:.65rem;color:var(--ink3);margin-top:6px;">Registered</div></div>
         <div class="sc"><div class="si">📄</div><div class="sl">Payments Made</div><div class="sv" id="e-s-pays">0</div><div style="font-size:.65rem;color:var(--ink3);margin-top:6px;">All time</div></div>
@@ -629,7 +630,7 @@ const $=id=>document.getElementById(id);
 
 // ══ ROUTING ═══════════════════════════════════════════════
 function show(id){ document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active')); $(id).classList.add('active'); }
-function goLanding(){ show('screen-landing'); currentRole=null; }
+function goLanding(){ localStorage.removeItem('pp_last_role'); show('screen-landing'); currentRole=null; }
 
 function startOnboard(role){
   currentRole=role;
@@ -687,6 +688,7 @@ function enterEmployer(){
   $('e-company').textContent=currentUser.name;
   $('e-wallet').textContent=walletAddress.slice(0,6)+'…'+walletAddress.slice(-4);
   if(!TEST_MODE) $('e-tbanner').style.display='none';
+  localStorage.setItem('pp_last_role','employer');
   show('screen-employer');
   refreshE(); checkNetwork(); toast('Welcome, '+currentUser.name+' 👋');
 }
@@ -715,6 +717,34 @@ function refreshE(){
   $('e-s-month').textContent=month.toLocaleString();
   $('e-count-badge').textContent=emps.length;
   renderERecent(); renderETeam(); renderEChart();
+  loadUSDCBalance();
+}
+
+async function loadUSDCBalance(){
+  const el=$('e-s-usdc');
+  if(!el) return;
+  if(!walletAddress||!provider){ el.textContent='—'; return; }
+  try{
+    // Try to get real USDC balance if contract is deployed
+    if(USDC_ADDRESS && USDC_ADDRESS!=='PASTE_YOUR_USDC_ADDRESS_HERE'){
+      const usdc=new ethers.Contract(USDC_ADDRESS,[
+        'function balanceOf(address) view returns (uint256)',
+        'function decimals() view returns (uint8)',
+      ],provider);
+      const [bal,dec]=await Promise.all([usdc.balanceOf(walletAddress),usdc.decimals()]);
+      const fmt=parseFloat(ethers.utils.formatUnits(bal,dec));
+      el.textContent=fmt.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+    } else {
+      // Test mode — show native PHRS balance instead
+      const bal=await provider.getBalance(walletAddress);
+      const fmt=parseFloat(ethers.utils.formatEther(bal));
+      el.textContent=fmt.toLocaleString('en-US',{minimumFractionDigits:4,maximumFractionDigits:4});
+      const el2=$('e-s-usdc');
+      if(el2) el2.nextSibling && (el2.nextElementSibling||el2.parentNode.querySelector('span:last-child')).textContent=' PHRS';
+    }
+  }catch(e){
+    el.textContent='—';
+  }
 }
 
 function renderERecent(){
@@ -879,6 +909,7 @@ function enterWorker(){
   $('w-name-d').textContent=currentUser.name; $('w-wallet-d').textContent=walletAddress.slice(0,6)+'…'+walletAddress.slice(-4);
   $('w-greet').textContent=currentUser.name.split(' ')[0];
   if(!TEST_MODE) $('w-tbanner').style.display='none';
+  localStorage.setItem('pp_last_role','worker');
   show('screen-worker'); refreshW(); checkNetwork(); toast('Welcome back, '+currentUser.name+' 👋');
 }
 
@@ -1118,11 +1149,34 @@ window.addEventListener('DOMContentLoaded',()=>{
       startOnboard(role);
     });
   });
+
+  // ── Session restore on reload ────────────────────────────
+  // If user already registered, reconnect silently and skip landing
+  const savedProfile=db.profile();
+  const savedRole=localStorage.getItem('pp_last_role');
+  if(savedProfile && savedProfile.name && savedRole){
+    const wp=getWalletProvider();
+    if(wp){
+      wp.request({method:'eth_accounts'}).then(async accounts=>{
+        if(!accounts||!accounts.length) return; // wallet locked — stay on landing
+        try{
+          provider=new ethers.providers.Web3Provider(wp,'any');
+          signer=provider.getSigner();
+          walletAddress=accounts[0];
+          currentUser=savedProfile;
+          currentRole=savedRole;
+          if(savedRole==='employer') enterEmployer();
+          else enterWorker();
+        }catch(_){}
+      }).catch(()=>{});
+    }
+  }
+
   // Attach wallet event listeners to whichever provider is active
   const wp=getWalletProvider();
   if(wp){
-    try{ wp.on('accountsChanged',()=>location.reload()); }catch(_){}
-    try{ wp.on('chainChanged',()=>{ location.reload(); }); }catch(_){}
+    try{ wp.on('accountsChanged',accs=>{ if(!accs.length) localStorage.removeItem('pp_last_role'); location.reload(); }); }catch(_){}
+    try{ wp.on('chainChanged',()=>location.reload()); }catch(_){}
   }
 });
 </script>
