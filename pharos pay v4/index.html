@@ -367,7 +367,7 @@ tr:hover td{background:rgba(255,255,255,.015);}
     <div class="page active" id="ep-dashboard">
       <div class="ph"><div><div class="pt">Dashboard</div><div class="ps">Payroll overview · Pharos Atlantic</div></div><button class="btn bg" onclick="enav('payroll',null)">+ Run Payroll</button></div>
       <div class="srow">
-        <div class="sc"><div class="si">💳</div><div class="sl">Wallet Balance</div><div class="sv"><span id="e-s-usdc">—</span><span style="font-size:.9rem;color:var(--ink3);margin-left:4px;">USDC</span></div><div style="font-size:.65rem;color:var(--ink3);margin-top:6px;">Available to pay</div></div>
+        <div class="sc"><div class="si">💳</div><div class="sl">Wallet Balance</div><div class="sv"><span id="e-s-usdc">—</span><span style="font-size:.75rem;color:var(--ink3);margin-left:4px;">USDC</span></div><div style="font-size:.65rem;color:var(--ink3);margin-top:6px;">Available to pay</div></div>
         <div class="sc"><div class="si">💰</div><div class="sl">Total Disbursed</div><div class="sv">$<span id="e-s-total">0</span></div><div style="font-size:.65rem;color:var(--ink3);margin-top:6px;">USDC on Pharos</div></div>
         <div class="sc"><div class="si">👥</div><div class="sl">Active Employees</div><div class="sv" id="e-s-emps">0</div><div style="font-size:.65rem;color:var(--ink3);margin-top:6px;">Registered</div></div>
         <div class="sc"><div class="si">📄</div><div class="sl">Payments Made</div><div class="sv" id="e-s-pays">0</div><div style="font-size:.65rem;color:var(--ink3);margin-top:6px;">All time</div></div>
@@ -630,7 +630,7 @@ const $=id=>document.getElementById(id);
 
 // ══ ROUTING ═══════════════════════════════════════════════
 function show(id){ document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active')); $(id).classList.add('active'); }
-function goLanding(){ localStorage.removeItem('pp_last_role'); show('screen-landing'); currentRole=null; }
+function goLanding(){ localStorage.removeItem('pp_last_role'); provider=null; signer=null; walletAddress=null; currentRole=null; currentUser={}; show('screen-landing'); }
 
 function startOnboard(role){
   currentRole=role;
@@ -722,11 +722,10 @@ function refreshE(){
 
 async function loadUSDCBalance(){
   const el=$('e-s-usdc');
-  if(!el) return;
-  if(!walletAddress||!provider){ el.textContent='—'; return; }
+  if(!el||!walletAddress||!provider){if(el)el.textContent='—';return;}
+  el.textContent='…';
   try{
-    // Try to get real USDC balance if contract is deployed
-    if(USDC_ADDRESS && USDC_ADDRESS!=='PASTE_YOUR_USDC_ADDRESS_HERE'){
+    if(USDC_ADDRESS&&USDC_ADDRESS!=='PASTE_YOUR_USDC_ADDRESS_HERE'){
       const usdc=new ethers.Contract(USDC_ADDRESS,[
         'function balanceOf(address) view returns (uint256)',
         'function decimals() view returns (uint8)',
@@ -735,16 +734,15 @@ async function loadUSDCBalance(){
       const fmt=parseFloat(ethers.utils.formatUnits(bal,dec));
       el.textContent=fmt.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
     } else {
-      // Test mode — show native PHRS balance instead
+      // Test mode — show native PHRS balance
       const bal=await provider.getBalance(walletAddress);
       const fmt=parseFloat(ethers.utils.formatEther(bal));
       el.textContent=fmt.toLocaleString('en-US',{minimumFractionDigits:4,maximumFractionDigits:4});
-      const el2=$('e-s-usdc');
-      if(el2) el2.nextSibling && (el2.nextElementSibling||el2.parentNode.querySelector('span:last-child')).textContent=' PHRS';
+      // Update label to PHRS
+      const lbl=el.parentNode.querySelector('span:last-child');
+      if(lbl) lbl.textContent=' PHRS';
     }
-  }catch(e){
-    el.textContent='—';
-  }
+  }catch(e){ el.textContent='—'; }
 }
 
 function renderERecent(){
@@ -1142,42 +1140,44 @@ async function checkNetwork(){
 
 // ══ INIT ══════════════════════════════════════════════════
 window.addEventListener('DOMContentLoaded',()=>{
-  // Ensure role cards are clickable via JS listeners (belt-and-suspenders)
+
+  // ── Card clicks — always first ────────────────────────────
   document.querySelectorAll('.role-card').forEach(card=>{
-    card.addEventListener('click',()=>{
-      const role=card.classList.contains('employer')?'employer':'worker';
-      startOnboard(role);
+    card.addEventListener('click', function(){
+      startOnboard(this.classList.contains('employer')?'employer':'worker');
     });
   });
 
-  // ── Session restore on reload ────────────────────────────
-  // If user already registered, reconnect silently and skip landing
-  const savedProfile=db.profile();
-  const savedRole=localStorage.getItem('pp_last_role');
-  if(savedProfile && savedProfile.name && savedRole){
-    const wp=getWalletProvider();
-    if(wp){
-      wp.request({method:'eth_accounts'}).then(async accounts=>{
-        if(!accounts||!accounts.length) return; // wallet locked — stay on landing
-        try{
-          provider=new ethers.providers.Web3Provider(wp,'any');
-          signer=provider.getSigner();
-          walletAddress=accounts[0];
-          currentUser=savedProfile;
-          currentRole=savedRole;
-          if(savedRole==='employer') enterEmployer();
-          else enterWorker();
-        }catch(_){}
-      }).catch(()=>{});
-    }
-  }
-
-  // Attach wallet event listeners to whichever provider is active
+  // ── Wallet event listeners ────────────────────────────────
   const wp=getWalletProvider();
   if(wp){
-    try{ wp.on('accountsChanged',accs=>{ if(!accs.length) localStorage.removeItem('pp_last_role'); location.reload(); }); }catch(_){}
+    try{ wp.on('accountsChanged',accs=>{
+      if(!accs||!accs.length) localStorage.removeItem('pp_last_role');
+      location.reload();
+    }); }catch(_){}
     try{ wp.on('chainChanged',()=>location.reload()); }catch(_){}
   }
+
+  // ── Session restore — runs after cards are wired up ───────
+  const savedRole=localStorage.getItem('pp_last_role');
+  const savedProfile=db.profile();
+  if(!savedRole||!savedProfile||!savedProfile.name) return;
+
+  const wp2=getWalletProvider();
+  if(!wp2) return;
+
+  wp2.request({method:'eth_accounts'}).then(async accounts=>{
+    if(!accounts||!accounts.length) return; // wallet locked, stay on landing
+    try{
+      provider=new ethers.providers.Web3Provider(wp2,'any');
+      signer=provider.getSigner();
+      walletAddress=accounts[0];
+      currentUser=savedProfile;
+      currentRole=savedRole;
+      if(savedRole==='employer') enterEmployer();
+      else enterWorker();
+    }catch(_){}
+  }).catch(()=>{});
 });
 </script>
 </body>
