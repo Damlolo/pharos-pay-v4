@@ -877,19 +877,21 @@ function syncMobNetDot(){
 function handleConnectClick(){
   const name=$('ob-name').value.trim();
   if(!name){toast('Enter your name or company name','error');return;}
-  if(isMobile()&&!isInAppBrowser()){
-    // On mobile browser without injected wallet — show picker
-    showWalletPicker();
-  } else {
+  // If any injected wallet exists (desktop extension OR in-app browser), connect directly
+  if(getWalletProvider()){
     connectAndOnboard();
+  } else {
+    // No injected wallet — mobile without extension, show app wallet picker
+    showWalletPicker();
   }
 }
 
 function showWalletPicker(){
   const extOption=$('wp-extension');
   const extDivider=$('wp-divider-ext');
-  if(window.ethereum){
-    extOption.style.display='flex';
+  // Show extension option only if one is actually available
+  if(getWalletProvider()){
+    if(extOption) extOption.style.display='flex';
     if(extDivider) extDivider.style.display='flex';
   }
   $('wp-mobile').style.display='flex';
