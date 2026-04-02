@@ -8,6 +8,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,700;1,9..144,400&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
 <script src="https://unpkg.com/@walletconnect/web3-provider@1.8.0/dist/umd/index.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 :root {
   --bg:#0d0f14; --bg2:#12151c; --surface:#181c27; --surface2:#1e2333;
@@ -831,25 +832,102 @@ let provider, signer, walletAddress, currentRole, currentUser={};
 // will always see the same local data namespace.
 // For true cross-device sync a backend is needed; this ships with
 // Export / Import so users can move data between devices manually.
+// ══ SUPABASE CONFIG ═══════════════════════════════════════
+// 1. Go to https://supabase.com → New project (free)
+// 2. Settings → API → copy Project URL and anon public key
+// 3. Run this SQL in the Supabase SQL editor:
+//
+//   create table if not exists pp_data (
+//     wallet text not null,
+//     key    text not null,
+//     value  jsonb not null default '[]',
+//     updated_at timestamptz default now(),
+//     primary key (wallet, key)
+//   );
+//   alter table pp_data enable row level security;
+//   create policy "wallet owner full access" on pp_data
+//     using (true) with check (true);
+//
+const SUPABASE_URL = 'https://ceijyjtghnposfuzuuuf.supabase.co';       // e.g. https://xxxx.supabase.co
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNlaXl5anRnaG5wb3NmenV6dXVmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxNDIxNjMsImV4cCI6MjA5MDcxODE2M30.o9_cwhE9PCjdXye9tRoJLhWoitT_fHOMxEJKEpHeU3g';
+
+let _sb = null;
+function getSB(){
+  if(_sb) return _sb;
+  if(typeof supabase === 'undefined' || SUPABASE_URL.startsWith('YOUR_')) return null;
+  _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  return _sb;
+}
+
+// ══ DB — Supabase with localStorage fallback ══════════════
 const db = {
-  _key:(k)=>{
-    const addr=(walletAddress||'anon').toLowerCase();
-    return 'pp_'+addr+'_'+k;
+  _lkey:(k)=>'pp_'+(walletAddress||'anon').toLowerCase()+'_'+k,
+  _wallet:()=>(walletAddress||'anon').toLowerCase(),
+
+  // ── local cache helpers ──────────────────────────────────
+  _lget:(k,d)=>{ try{const v=localStorage.getItem(db._lkey(k));return v===null?d:JSON.parse(v);}catch{return d;} },
+  _lset:(k,v)=>{ try{localStorage.setItem(db._lkey(k),JSON.stringify(v));}catch{} },
+
+  // ── async cloud read (returns promise) ───────────────────
+  async _cget(k, fallback){
+    const sb=getSB(); if(!sb) return fallback;
+    try{
+      const {data,error}=await sb.from('pp_data')
+        .select('value')
+        .eq('wallet',db._wallet())
+        .eq('key',k)
+        .maybeSingle();
+      if(error||!data) return fallback;
+      db._lset(k, data.value); // refresh local cache
+      return data.value;
+    }catch{ return fallback; }
   },
-  g:(k,d=[])=>{ try{const v=localStorage.getItem(db._key(k)); return v===null?d:JSON.parse(v);}catch{return d;} },
-  s:(k,v)=>localStorage.setItem(db._key(k),JSON.stringify(v)),
-  employees:()=>db.g('employees'),
-  payments:()=>db.g('payments'),
-  profile:()=>db.g('profile',{}),
-  jobs:()=>db.g('jobs'),
-  doneJobs:()=>db.g('done_jobs',{}),
+
+  // ── async cloud write ────────────────────────────────────
+  async _cset(k, v){
+    db._lset(k, v); // always write locally first (instant UI)
+    const sb=getSB(); if(!sb) return;
+    try{
+      await sb.from('pp_data').upsert(
+        {wallet:db._wallet(), key:k, value:v, updated_at:new Date().toISOString()},
+        {onConflict:'wallet,key'}
+      );
+    }catch(e){ console.warn('Supabase write failed, data saved locally:', e.message); }
+  },
+
+  // ── sync: pull latest from cloud into localStorage ───────
+  async sync(){
+    const sb=getSB(); if(!sb) return;
+    try{
+      const {data,error}=await sb.from('pp_data')
+        .select('key,value')
+        .eq('wallet',db._wallet());
+      if(error||!data) return;
+      data.forEach(row=>db._lset(row.key, row.value));
+    }catch{}
+  },
+
+  // ── public sync API (reads local cache, writes cloud+local)
+  // Reads are synchronous (from local cache for instant UI).
+  // After connect, call db.sync() once to hydrate cache from cloud.
+  employees:()=>db._lget('employees',[]),
+  payments:()=>db._lget('payments',[]),
+  profile:()=>db._lget('profile',{}),
+  jobs:()=>db._lget('jobs',[]),
+  doneJobs:()=>db._lget('done_jobs',{}),
+  completions:()=>db._lget('completions',[]),
+
+  // Writes go to local cache immediately AND cloud async
+  s:(k,v)=>{ db._lset(k,v); db._cset(k,v); },
   saveDoneJobs:(m)=>db.s('done_jobs',m),
-  completions:()=>db.g('completions',[]),
   saveCompletions:(c)=>db.s('completions',c),
-  // Export entire wallet dataset as JSON
+
+  // ── profile special case (also used in session restore) ──
+  saveProfile:(p)=>db.s('profile',p),
+
+  // ── export / import (unchanged) ─────────────────────────
   exportAll:()=>{
-    const addr=(walletAddress||'anon').toLowerCase();
-    const prefix='pp_'+addr+'_';
+    const addr=db._wallet(), prefix='pp_'+addr+'_';
     const out={wallet:addr,exportedAt:Date.now(),data:{}};
     for(let i=0;i<localStorage.length;i++){
       const key=localStorage.key(i);
@@ -860,17 +938,13 @@ const db = {
     }
     return out;
   },
-  // Import a dataset exported by exportAll
   importAll:(obj)=>{
     if(!obj||!obj.data) return false;
-    const addr=(walletAddress||'anon').toLowerCase();
-    const prefix='pp_'+addr+'_';
-    Object.entries(obj.data).forEach(([k,v])=>{
-      localStorage.setItem(prefix+k,JSON.stringify(v));
-    });
+    Object.entries(obj.data).forEach(([k,v])=>db.s(k,v));
     return true;
   },
 };
+
 
 const $=id=>document.getElementById(id);
 
@@ -1099,7 +1173,8 @@ function enterEmployer(){
   if(!TEST_MODE) $('e-tbanner').style.display='none';
   localStorage.setItem('pp_last_role','employer');
   show('screen-employer');
-  updateMobTopbar(); refreshE(); checkNetwork(); toast('Welcome, '+currentUser.name+' 👋');
+  updateMobTopbar(); checkNetwork(); toast('Welcome, '+currentUser.name+' 👋');
+  db.sync().then(()=>refreshE()); // pull latest from cloud then render
 }
 
 function enav(page, btn){
@@ -1319,7 +1394,8 @@ function enterWorker(){
   $('w-greet').textContent=currentUser.name.split(' ')[0];
   if(!TEST_MODE) $('w-tbanner').style.display='none';
   localStorage.setItem('pp_last_role','worker');
-  show('screen-worker'); updateMobTopbar(); refreshW(); checkNetwork(); toast('Welcome back, '+currentUser.name+' 👋');
+  show('screen-worker'); updateMobTopbar(); checkNetwork(); toast('Welcome back, '+currentUser.name+' 👋');
+  db.sync().then(()=>refreshW()); // pull latest from cloud then render
 }
 
 function wnav(page,btn){
