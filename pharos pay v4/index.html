@@ -866,13 +866,11 @@ function syncMobNetDot(){
 
 // ── Wallet picker ──────────────────────────────────────────
 function handleConnectClick(){
-  const name=$('ob-name').value.trim();
-  if(!name){toast('Enter your name or company name','error');return;}
-  // Extension available → connect directly, no picker needed
+  // Extension available → connect directly (name validated inside connectAndOnboard)
   if(getWalletProvider()){
     connectAndOnboard();
   } else {
-    // No extension — show picker with WalletConnect option
+    // No extension — show picker; name validated when user actually connects
     showWalletPicker();
   }
 }
@@ -892,8 +890,10 @@ function showWalletPicker(){
 }
 
 function closeWalletPicker(){
-  $('wp-mobile').style.display='none';
-  $('wc-status').style.display='none';
+  const modal=$('wp-mobile');
+  const status=$('wc-status');
+  if(modal) modal.style.display='none';
+  if(status) status.style.display='none';
   // Disconnect any pending WC session
   if(window._wcProvider){
     try{ window._wcProvider.disconnect(); }catch(_){}
@@ -909,7 +909,11 @@ function connectExtension(){
 // ── WalletConnect ──────────────────────────────────────────
 async function connectWC(){
   const name=$('ob-name').value.trim();
-  if(!name){ toast('Enter your name first','error'); return; }
+  if(!name){
+    const statusEl=$('wc-status');
+    if(statusEl){ statusEl.style.display='block'; statusEl.innerHTML='<span style="color:var(--red);">Please enter your name above first.</span>'; }
+    return;
+  }
 
   // Check SDK loaded
   if(!window.WalletConnectProvider){
