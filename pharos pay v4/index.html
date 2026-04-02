@@ -457,6 +457,7 @@ tr:hover td{background:rgba(255,255,255,.015);}
       <button class="nav-item" onclick="enav('employees',this)"><span class="ni">👥</span>Employees<span class="nbadge" id="e-count-badge">0</span></button>
       <button class="nav-item" onclick="enav('payroll',this)"><span class="ni">💸</span>Run Payroll</button>
       <button class="nav-item" onclick="enav('history',this)"><span class="ni">📋</span>History</button>
+      <button class="nav-item" onclick="enav('jobssent',this)"><span class="ni">📤</span>Jobs Sent<span class="nbadge" id="e-jobs-badge">0</span></button>
       <div class="nav-section">Account</div>
       <button class="nav-item" onclick="enav('profile',this)"><span class="ni">👤</span>Profile</button>
     </nav>
@@ -575,6 +576,25 @@ tr:hover td{background:rgba(255,255,255,.015);}
         <div class="sc"><div class="sl">Team Size</div><div class="sv" id="ep-team">0</div></div>
       </div>
     </div>
+
+    <!-- JOBS SENT -->
+    <div class="page" id="ep-jobssent">
+      <div class="ph"><div><div class="pt">Jobs Sent</div><div class="ps">Assign tasks to workers — they appear in the worker's My Jobs</div></div></div>
+      <div class="two">
+        <div class="card">
+          <div class="ch"><div class="ct">Assign New Job</div></div>
+          <div style="display:flex;flex-direction:column;gap:12px;">
+            <div class="f"><label>Worker</label><select id="js-worker"><option value="">— Select worker —</option></select></div>
+            <div class="f"><label>Job Title</label><input id="js-title" placeholder="e.g. Build landing page"/></div>
+            <div class="f"><label>Description</label><textarea id="js-desc" placeholder="Describe the task…" style="resize:vertical;min-height:80px;font-family:var(--mono);font-size:.82rem;color:var(--ink);background:var(--bg2);border:1px solid var(--border);padding:10px 13px;border-radius:7px;outline:none;width:100%;"></textarea></div>
+            <div class="f"><label>Deadline (optional)</label><input id="js-deadline" type="date"/></div>
+            <div class="f"><label>Budget / Pay (USDC, optional)</label><input id="js-budget" type="number" placeholder="e.g. 500"/></div>
+            <button class="btn bg" onclick="sendJob()" style="width:100%;justify-content:center;">📤 Send Job</button>
+          </div>
+        </div>
+        <div class="card"><div class="ch"><div class="ct">Sent Jobs</div></div><div id="e-jobs-list"></div></div>
+      </div>
+    </div>
   </div>
 
   <!-- MOBILE BOTTOM NAV (employer) -->
@@ -584,6 +604,7 @@ tr:hover td{background:rgba(255,255,255,.015);}
       <button class="mob-nav-item" id="emn-employees" onclick="enav('employees',null);setMobNav('e','employees')"><span class="mni">👥</span>Team</button>
       <button class="mob-nav-item" id="emn-payroll" onclick="enav('payroll',null);setMobNav('e','payroll')"><span class="mni">💸</span>Payroll</button>
       <button class="mob-nav-item" id="emn-history" onclick="enav('history',null);setMobNav('e','history')"><span class="mni">📋</span>History</button>
+      <button class="mob-nav-item" id="emn-jobssent" onclick="enav('jobssent',null);setMobNav('e','jobssent')"><span class="mni">📤</span>Jobs</button>
       <button class="mob-nav-item" id="emn-profile" onclick="enav('profile',null);setMobNav('e','profile')"><span class="mni">👤</span>Profile</button>
     </div>
   </nav>
@@ -807,6 +828,7 @@ const db = {
   employees:()=>db.g('employees'),
   payments:()=>db.g('payments'),
   profile:()=>db.g('profile',{}),
+  jobs:()=>db.g('jobs'),
 };
 
 const $=id=>document.getElementById(id);
@@ -842,7 +864,7 @@ function isInAppBrowser(){ return !!window.ethereum && isMobile(); }
 
 function setMobNav(prefix, page){
   const pages = prefix==='e'
-    ? ['dashboard','employees','payroll','history','profile']
+    ? ['dashboard','employees','payroll','history','jobssent','profile']
     : ['dashboard','jobs','earnings','invoices','profile'];
   pages.forEach(p=>{
     const el=$(prefix+'mn-'+p);
@@ -1042,7 +1064,7 @@ function enterEmployer(){
 function enav(page, btn){
   document.querySelectorAll('#screen-employer .nav-item').forEach(b=>b.classList.remove('active'));
   if(btn) btn.classList.add('active');
-  else { const items=document.querySelectorAll('#screen-employer .nav-item'); const map={dashboard:0,employees:1,payroll:2,history:3,profile:4}; if(map[page]!==undefined) items[map[page]].classList.add('active'); }
+  else { const items=document.querySelectorAll('#screen-employer .nav-item'); const map={dashboard:0,employees:1,payroll:2,history:3,jobssent:4,profile:5}; if(map[page]!==undefined) items[map[page]].classList.add('active'); }
   document.querySelectorAll('#screen-employer .page').forEach(p=>p.classList.remove('active'));
   $('ep-'+page).classList.add('active');
   if(page==='payroll'){renderBulk();fillEmpSelect();}
@@ -1050,6 +1072,7 @@ function enav(page, btn){
   if(page==='employees'){renderEList();fillEmpSelect();}
   if(page==='profile') renderEProfile();
   if(page==='dashboard') refreshE();
+  if(page==='jobssent'){fillJobWorkerSelect();renderEJobs();}
 }
 
 function refreshE(){
@@ -1062,6 +1085,7 @@ function refreshE(){
   $('e-s-pays').textContent=pays.length;
   $('e-s-month').textContent=month.toLocaleString();
   $('e-count-badge').textContent=emps.length;
+  const _jb=$('e-jobs-badge'); if(_jb) _jb.textContent=db.jobs().length;
   renderERecent(); renderETeam(); renderEChart();
   loadUSDCBalance();
 }
@@ -1274,6 +1298,11 @@ function myPays(){
   return db.payments().filter(p=>p.to.toLowerCase()===walletAddress.toLowerCase());
 }
 
+function myAssignedJobs(){
+  if(!walletAddress) return [];
+  return db.jobs().filter(j=>j.to.toLowerCase()===walletAddress.toLowerCase());
+}
+
 function refreshW(){
   const pays=myPays(),total=pays.reduce((s,p)=>s+p.amount,0);
   const now=new Date(),m=now.getMonth(),y=now.getFullYear();
@@ -1306,37 +1335,85 @@ function renderWChart(){
 }
 
 function renderWJobs(){
-  const pays=myPays(), el=$('w-jobs-list');
+  const pays=myPays(), assigned=myAssignedJobs(), el=$('w-jobs-list');
   const doneMap=JSON.parse(localStorage.getItem('pp_done_jobs')||'{}');
-  if(!pays.length){el.innerHTML='<div class="empty"><div class="ei">💼</div>No jobs found. Ask your employer to add you and run payroll.</div>';return;}
-  el.innerHTML=pays.map(p=>{
-    const isDone=!!doneMap[p.id];
-    const assignedDate=fmtD(p.timestamp);
-    const doneDate=isDone&&doneMap[p.id].doneAt?fmtD(doneMap[p.id].doneAt):'';
-    return `
-    <div class="jc ${isDone?'paid':p.testMode?'pending':'paid'}" id="jc-${p.id}" style="${isDone?'opacity:.75;':''}">
-      <div style="flex:1;min-width:0;">
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
-          <span class="badge bat">${p.role}</span>
-          <span class="${isDone?'badge bav':'badge bam'}">${isDone?'✓ Done':'In Progress'}</span>
-          ${p.testMode?'<span class="badge bam">Simulated</span>':'<span class="badge bav">Paid</span>'}
-        </div>
-        <div class="jt" style="margin-bottom:4px;">${p.description}</div>
-        <div class="je" style="margin-bottom:3px;">🏢 <strong>${p.fromName||p.from.slice(0,10)+'…'}</strong></div>
-        <div class="jp_">📅 Assigned: ${assignedDate}${p.period?' · '+p.period:''}${doneDate?' · Completed: '+doneDate:''}</div>
-      </div>
-      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;flex-shrink:0;">
-        <div class="jamount">$${p.amount.toLocaleString()} <span style="font-size:.65rem;color:var(--ink3);">USDC</span></div>
-        <div style="display:flex;gap:8px;align-items:center;">
-          <button class="btn bt xs" onclick='showInv(${JSON.stringify(p)})'>🧾</button>
-          ${isDone
-            ? `<span style="font-size:.7rem;color:var(--green);font-weight:500;">✓ Marked done</span>`
-            : `<button class="btn bg xs" onclick="markJobDone('${p.id}')" style="white-space:nowrap;">Mark Done ✓</button>`
-          }
-        </div>
-      </div>
-    </div>`;
-  }).join('');
+  const all=[...assigned.map(j=>({...j,_type:'assigned'})),...pays.map(p=>({...p,_type:'payment'}))];
+  while(el.firstChild) el.removeChild(el.firstChild);
+  if(!all.length){
+    el.innerHTML='<div class="empty"><div class="ei">💼</div>No jobs yet. Your employer will assign tasks or run payroll.</div>';
+    return;
+  }
+  all.forEach(function(item){
+    const isA=item._type==='assigned';
+    const isDone=!!doneMap[item.id];
+    const aDate=fmtD(item.timestamp);
+    const dDate=isDone&&doneMap[item.id].doneAt?fmtD(doneMap[item.id].doneAt):'';
+
+    const card=document.createElement('div');
+    card.className='jc '+(isDone?'paid':isA?'pending':'paid');
+    card.id='jc-'+item.id;
+    if(isDone) card.style.opacity='0.75';
+
+    const left=document.createElement('div'); left.style.cssText='flex:1;min-width:0;';
+
+    const badgeRow=document.createElement('div'); badgeRow.style.cssText='display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;';
+    const bRole=document.createElement('span'); bRole.className='badge bat'; bRole.textContent=item.role||'Task';
+    const bStatus=document.createElement('span'); bStatus.className=isDone?'badge bav':'badge bam'; bStatus.textContent=isDone?'✓ Done':'In Progress';
+    const bType=document.createElement('span');
+    if(isA){bType.className='badge bag';bType.textContent='Assigned';}
+    else{bType.className=item.testMode?'badge bam':'badge bav';bType.textContent=item.testMode?'Simulated':'Paid';}
+    badgeRow.appendChild(bRole); badgeRow.appendChild(bStatus); badgeRow.appendChild(bType);
+
+    const title=document.createElement('div'); title.className='jt'; title.style.marginBottom='4px';
+    title.textContent=isA?(item.title||item.description):item.description;
+
+    left.appendChild(badgeRow); left.appendChild(title);
+
+    if(isA&&item.description&&item.title&&item.description!==item.title){
+      const sub=document.createElement('div'); sub.style.cssText='font-size:.72rem;color:var(--ink2);margin-bottom:3px;';
+      sub.textContent=item.description; left.appendChild(sub);
+    }
+
+    const empLine=document.createElement('div'); empLine.className='je'; empLine.style.marginBottom='3px';
+    empLine.innerHTML='🏢 <strong>'+(item.fromName||item.from.slice(0,10)+'…')+'</strong>';
+
+    const dateLine=document.createElement('div'); dateLine.className='jp_';
+    let dt='📅 Assigned: '+aDate;
+    if(!isA&&item.period) dt+=' · '+item.period;
+    if(isA&&item.deadline) dt+=' · Due: '+item.deadline;
+    if(dDate) dt+=' · Completed: '+dDate;
+    dateLine.textContent=dt;
+
+    left.appendChild(empLine); left.appendChild(dateLine);
+
+    const right=document.createElement('div'); right.style.cssText='display:flex;flex-direction:column;align-items:flex-end;gap:8px;flex-shrink:0;';
+
+    const amtEl=document.createElement('div'); amtEl.className='jamount';
+    const amtVal=isA?(item.budget||0):item.amount;
+    if(amtVal>0) amtEl.innerHTML='$'+amtVal.toLocaleString()+' <span style="font-size:.65rem;color:var(--ink3);">USDC</span>';
+    else amtEl.innerHTML='<span style="font-size:.72rem;color:var(--ink3);">No pay set</span>';
+
+    const btnRow=document.createElement('div'); btnRow.style.cssText='display:flex;gap:8px;align-items:center;';
+
+    if(!isA){
+      const invBtn=document.createElement('button'); invBtn.className='btn bt xs'; invBtn.textContent='🧾';
+      invBtn.addEventListener('click',(function(pay){return function(){showInv(pay);};})(item));
+      btnRow.appendChild(invBtn);
+    }
+
+    if(isDone){
+      const lbl=document.createElement('span'); lbl.style.cssText='font-size:.7rem;color:var(--green);font-weight:500;';
+      lbl.textContent='✓ Marked done'; btnRow.appendChild(lbl);
+    } else {
+      const dBtn=document.createElement('button'); dBtn.className='btn bg xs'; dBtn.style.whiteSpace='nowrap'; dBtn.textContent='Mark Done ✓';
+      dBtn.addEventListener('click',(function(id){return function(){markJobDone(id);};})(item.id));
+      btnRow.appendChild(dBtn);
+    }
+
+    right.appendChild(amtEl); right.appendChild(btnRow);
+    card.appendChild(left); card.appendChild(right);
+    el.appendChild(card);
+  });
 }
 
 function markJobDone(jobId){
@@ -1442,6 +1519,89 @@ function printInvoice(p){
 <div class="foot">Network: Pharos Atlantic · Chain ID: 688689 · ${p.testMode?'Test Mode (Simulated)':'Tx: '+p.txHash+' · Block: '+p.block}<br/>Verify at testnet.pharosscan.xyz · Generated by PharosPay</div>
 </body></html>`);
   w.document.close(); w.onload=()=>w.print();
+}
+
+// ══ JOBS SENT ═════════════════════════════════════════════════════
+function fillJobWorkerSelect(){
+  const emps=db.employees(), sel=$('js-worker');
+  if(!sel) return;
+  sel.innerHTML='<option value="">— Select worker —</option>'+
+    emps.map(e=>'<option value="'+e.address+'" data-name="'+e.name+'" data-role="'+e.role+'">'+e.name+' · '+e.role+'</option>').join('');
+}
+
+function sendJob(){
+  const sel=$('js-worker');
+  const addr=sel.value;
+  const workerName=(sel.selectedOptions[0]&&sel.selectedOptions[0].dataset.name)||'';
+  const workerRole=(sel.selectedOptions[0]&&sel.selectedOptions[0].dataset.role)||'';
+  const title=$('js-title').value.trim();
+  const desc=$('js-desc').value.trim();
+  const deadline=$('js-deadline').value;
+  const budget=parseFloat($('js-budget').value)||0;
+  if(!addr){toast('Select a worker','error');return;}
+  if(!title){toast('Enter a job title','error');return;}
+  const job={
+    id:'JOB-'+Date.now(),
+    from:walletAddress,fromName:currentUser.name||'Employer',
+    to:addr,toName:workerName,role:workerRole,
+    title:title,description:desc||title,
+    deadline:deadline||'',budget:budget,
+    timestamp:Date.now(),status:'pending'
+  };
+  const jobs=db.jobs(); jobs.unshift(job); db.s('jobs',jobs);
+  sel.value=''; $('js-title').value=''; $('js-desc').value=''; $('js-deadline').value=''; $('js-budget').value='';
+  const jb=$('e-jobs-badge'); if(jb) jb.textContent=db.jobs().length;
+  renderEJobs();
+  toast('Job sent to '+workerName+' ✓','success');
+}
+
+function deleteJob(id){
+  if(!confirm('Recall this job?')) return;
+  db.s('jobs',db.jobs().filter(j=>j.id!==id));
+  const jb=$('e-jobs-badge'); if(jb) jb.textContent=db.jobs().length;
+  renderEJobs();
+  toast('Job recalled');
+}
+
+function renderEJobs(){
+  const jobs=db.jobs(), el=$('e-jobs-list');
+  if(!el) return;
+  while(el.firstChild) el.removeChild(el.firstChild);
+  if(!jobs.length){
+    const e=document.createElement('div'); e.className='empty';
+    e.innerHTML='<div class="ei">📤</div>No jobs sent yet.';
+    el.appendChild(e); return;
+  }
+  jobs.forEach(function(j){
+    const doneMap=JSON.parse(localStorage.getItem('pp_done_jobs')||'{}');
+    const isDone=!!doneMap[j.id];
+    const card=document.createElement('div');
+    card.style.cssText='background:var(--bg2);border:1px solid var(--border);border-left:3px solid '+(isDone?'var(--green)':'var(--gold)')+';border-radius:10px;padding:14px 16px;margin-bottom:10px;';
+    const row=document.createElement('div'); row.style.cssText='display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;';
+    const info=document.createElement('div'); info.style.flex='1';
+
+    const titleRow=document.createElement('div'); titleRow.style.cssText='display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;';
+    const t=document.createElement('div'); t.style.cssText='font-weight:500;font-size:.84rem;'; t.textContent=j.title;
+    const badge=document.createElement('span'); badge.className=isDone?'badge bav':'badge bag'; badge.textContent=isDone?'✓ Done':'Pending';
+    titleRow.appendChild(t); titleRow.appendChild(badge);
+
+    const wLine=document.createElement('div'); wLine.style.cssText='font-size:.68rem;color:var(--ink3);margin-bottom:3px;';
+    wLine.textContent='👤 '+j.toName+(j.role?' · '+j.role:'');
+
+    const dLine=document.createElement('div'); dLine.style.cssText='font-size:.72rem;color:var(--ink2);margin-bottom:4px;'; dLine.textContent=j.description;
+
+    const meta=document.createElement('div'); meta.style.cssText='font-size:.65rem;color:var(--ink3);display:flex;gap:12px;flex-wrap:wrap;';
+    if(j.budget){const b=document.createElement('span');b.textContent='💰 $'+j.budget.toLocaleString()+' USDC';meta.appendChild(b);}
+    if(j.deadline){const d=document.createElement('span');d.textContent='📅 Due: '+j.deadline;meta.appendChild(d);}
+    const s=document.createElement('span');s.textContent='Sent: '+fmtD(j.timestamp);meta.appendChild(s);
+
+    info.appendChild(titleRow); info.appendChild(wLine); info.appendChild(dLine); info.appendChild(meta);
+
+    const del=document.createElement('button'); del.className='btn bd xs'; del.textContent='Recall';
+    del.addEventListener('click',(function(id){return function(){deleteJob(id);};})(j.id));
+
+    row.appendChild(info); row.appendChild(del); card.appendChild(row); el.appendChild(card);
+  });
 }
 
 // ══ HELPERS ═══════════════════════════════════════════════
