@@ -54,7 +54,7 @@ Follow the prompts. Done — you get a live URL instantly.
 | Network | Pharos Atlantic |
 | Chain ID | 688689 |
 | RPC | `https://atlantic.dplabs-internal.com` |
-| Explorer | [testnet.pharosscan.xyz](https://testnet.pharosscan.xyz) |
+| Explorer | [https://pharos-testnet.socialscan.io/](https://pharos-testnet.socialscan.io/) |
 | Faucet | [testnet.pharosnetwork.xyz](https://testnet.pharosnetwork.xyz) |
 
 ---
