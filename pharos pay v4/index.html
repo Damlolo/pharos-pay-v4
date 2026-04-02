@@ -262,7 +262,116 @@ tr:hover td{background:rgba(255,255,255,.015);}
 .link:hover{border-bottom-color:var(--gold);}
 .lt{color:var(--teal);}
 .lt:hover{border-bottom-color:var(--teal);}
-@media(max-width:768px){.sidebar{display:none;}.main-content{padding:20px 16px;}.fg{grid-template-columns:1fr;}.s2{grid-column:span 1;}.srow{grid-template-columns:1fr 1fr;}}
+/* ══ MOBILE ══════════════════════════════════════════════ */
+@media(max-width:768px){
+  /* Hide desktop sidebar */
+  .sidebar{display:none;}
+
+  /* App screens become column layout */
+  #screen-employer,#screen-worker{flex-direction:column;}
+
+  /* Main content fills screen with bottom nav padding */
+  .main-content{padding:16px 14px 80px;}
+
+  /* Forms single col */
+  .fg{grid-template-columns:1fr;}
+  .s2{grid-column:span 1;}
+
+  /* Stat cards 2 col */
+  .srow{grid-template-columns:1fr 1fr !important;}
+
+  /* Two-col grids go single */
+  .two{grid-template-columns:1fr;}
+
+  /* Page header stacks */
+  .ph{flex-direction:column;align-items:flex-start;gap:10px;}
+  .pt{font-size:1.3rem;}
+
+  /* Cards less padding */
+  .card{padding:16px;}
+
+  /* Table horizontal scroll */
+  .tw{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+
+  /* Modals full width */
+  .mbox{max-width:100%;margin:0;border-radius:var(--r-lg) var(--r-lg) 0 0;position:fixed;bottom:0;left:0;right:0;max-height:90vh;}
+  .moverlay{align-items:flex-end;padding:0;}
+
+  /* Landing cards stack */
+  .role-cards{flex-direction:column;align-items:center;}
+  .role-card{max-width:100%;width:100%;}
+
+  /* Onboard box full width */
+  .onboard-box{max-width:100%;border-radius:0;min-height:100vh;padding:28px 20px;}
+
+  /* Wallet picker modal */
+  .wpmobile{display:flex !important;}
+}
+
+/* ══ MOBILE BOTTOM NAV ═══════════════════════════════════ */
+.mob-nav{
+  display:none;
+  position:fixed;bottom:0;left:0;right:0;z-index:1000;
+  background:var(--bg2);border-top:1px solid var(--border);
+  padding:8px 0 env(safe-area-inset-bottom,8px);
+}
+@media(max-width:768px){ .mob-nav{display:flex;} }
+.mob-nav-items{display:flex;width:100%;justify-content:space-around;}
+.mob-nav-item{
+  flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;
+  padding:6px 4px;cursor:pointer;border:none;background:none;
+  font-family:var(--mono);font-size:.55rem;color:var(--ink3);
+  text-transform:uppercase;letter-spacing:.5px;transition:color .15s;
+}
+.mob-nav-item.active{color:var(--gold);}
+.mob-nav-item.wactive{color:var(--teal);}
+.mob-nav-item .mni{font-size:1.2rem;line-height:1;}
+
+/* ══ MOBILE TOP BAR ══════════════════════════════════════ */
+.mob-topbar{
+  display:none;
+  align-items:center;justify-content:space-between;
+  padding:12px 16px;background:var(--bg2);border-bottom:1px solid var(--border);
+  position:sticky;top:0;z-index:100;
+}
+@media(max-width:768px){ .mob-topbar{display:flex;} }
+.mob-brand{font-family:var(--serif);font-size:1rem;font-weight:700;}
+.mob-brand em{color:var(--gold);font-style:italic;}
+.mob-wallet-info{display:flex;align-items:center;gap:8px;font-size:.65rem;color:var(--ink3);}
+.mob-net-dot{width:7px;height:7px;border-radius:50%;background:var(--ink3);flex-shrink:0;}
+.mob-net-dot.correct{background:var(--green);}
+.mob-net-dot.wrong{background:var(--red);animation:pulse 1.5s infinite;}
+.mob-switch-btn{background:none;border:1px solid var(--border);color:var(--ink3);font-family:var(--mono);font-size:.6rem;padding:4px 8px;border-radius:5px;cursor:pointer;}
+
+/* ══ WALLET PICKER (mobile) ══════════════════════════════ */
+.wpmobile{
+  display:none;position:fixed;inset:0;z-index:6000;
+  background:rgba(0,0,0,.75);backdrop-filter:blur(6px);
+  align-items:flex-end;justify-content:center;
+}
+.wp-sheet{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r-lg) var(--r-lg) 0 0;
+  width:100%;max-width:480px;padding:24px 20px 32px;
+}
+.wp-title{font-family:var(--serif);font-size:1.1rem;font-weight:700;margin-bottom:6px;}
+.wp-sub{font-size:.72rem;color:var(--ink3);margin-bottom:20px;}
+.wp-options{display:flex;flex-direction:column;gap:10px;}
+.wp-option{
+  display:flex;align-items:center;gap:14px;padding:14px 16px;
+  background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);
+  cursor:pointer;transition:all .18s;
+}
+.wp-option:hover,.wp-option:active{border-color:var(--border2);background:var(--surface2);}
+.wp-icon{width:40px;height:40px;border-radius:10px;display:grid;place-items:center;font-size:1.4rem;flex-shrink:0;}
+.wp-name{font-weight:500;font-size:.84rem;}
+.wp-desc{font-size:.68rem;color:var(--ink3);margin-top:2px;}
+.wp-arrow{margin-left:auto;color:var(--ink3);font-size:.9rem;}
+.wp-cancel{width:100%;margin-top:14px;padding:12px;background:none;border:1px solid var(--border);color:var(--ink3);font-family:var(--mono);font-size:.78rem;border-radius:var(--r);cursor:pointer;}
+.wp-cancel:hover{border-color:var(--border2);color:var(--ink);}
+.wp-divider{display:flex;align-items:center;gap:10px;margin:14px 0;}
+.wp-divider::before,.wp-divider::after{content:'';flex:1;height:1px;background:var(--border);}
+.wp-divider span{font-size:.62rem;color:var(--ink3);text-transform:uppercase;letter-spacing:1px;}
 </style>
 </head>
 <body>
@@ -321,7 +430,7 @@ tr:hover td{background:rgba(255,255,255,.015);}
         <option>Marketing Manager</option><option>Other</option>
       </select>
     </div>
-    <button class="wc-btn" id="ob-btn" onclick="connectAndOnboard()">Connect Wallet on Pharos Atlantic</button>
+    <button class="wc-btn" id="ob-btn" onclick="handleConnectClick()">Connect Wallet on Pharos Atlantic</button>
     <div class="divider"><span>network</span></div>
     <div style="font-size:.68rem;color:var(--ink3);line-height:2.2;text-align:center;">
       Chain ID: <span style="color:var(--ink)">688689</span> · RPC: <span style="color:var(--ink)">atlantic.dplabs-internal.com</span><br/>
@@ -360,6 +469,17 @@ tr:hover td{background:rgba(255,255,255,.015);}
       <button class="switch-btn" style="margin-top:8px;" onclick="goLanding()">⇄ Switch Role</button>
     </div>
   </aside>
+
+  <!-- MOBILE TOP BAR (employer) -->
+  <div class="mob-topbar">
+    <div class="mob-brand">Pharos<em>Pay</em></div>
+    <div class="mob-wallet-info">
+      <span class="mob-net-dot" id="e-mob-dot"></span>
+      <span id="e-mob-wallet">—</span>
+      <button class="mob-switch-btn" onclick="goLanding()">⇄</button>
+    </div>
+  </div>
+
   <div class="main-content">
     <div class="tbanner" id="e-tbanner">🧪 <strong>Test Mode</strong> — payments simulated. Set <code>TEST_MODE=false</code> + deploy USDC to go live.</div>
 
@@ -456,6 +576,17 @@ tr:hover td{background:rgba(255,255,255,.015);}
       </div>
     </div>
   </div>
+
+  <!-- MOBILE BOTTOM NAV (employer) -->
+  <nav class="mob-nav" id="e-mob-nav">
+    <div class="mob-nav-items">
+      <button class="mob-nav-item active" id="emn-dashboard" onclick="enav('dashboard',null);setMobNav('e','dashboard')"><span class="mni">◈</span>Dashboard</button>
+      <button class="mob-nav-item" id="emn-employees" onclick="enav('employees',null);setMobNav('e','employees')"><span class="mni">👥</span>Team</button>
+      <button class="mob-nav-item" id="emn-payroll" onclick="enav('payroll',null);setMobNav('e','payroll')"><span class="mni">💸</span>Payroll</button>
+      <button class="mob-nav-item" id="emn-history" onclick="enav('history',null);setMobNav('e','history')"><span class="mni">📋</span>History</button>
+      <button class="mob-nav-item" id="emn-profile" onclick="enav('profile',null);setMobNav('e','profile')"><span class="mni">👤</span>Profile</button>
+    </div>
+  </nav>
 </div>
 
 <!-- ══ SCREEN 4: WORKER ═══════════════════════════════════ -->
@@ -487,6 +618,17 @@ tr:hover td{background:rgba(255,255,255,.015);}
       <button class="switch-btn" style="margin-top:8px;" onclick="goLanding()">⇄ Switch Role</button>
     </div>
   </aside>
+
+  <!-- MOBILE TOP BAR (worker) -->
+  <div class="mob-topbar">
+    <div class="mob-brand">Pharos<em>Pay</em></div>
+    <div class="mob-wallet-info">
+      <span class="mob-net-dot" id="w-mob-dot"></span>
+      <span id="w-mob-wallet">—</span>
+      <button class="mob-switch-btn" onclick="goLanding()">⇄</button>
+    </div>
+  </div>
+
   <div class="main-content">
     <div class="tbanner" id="w-tbanner">🧪 <strong>Test Mode</strong> — simulated payments. Real USDC once deployed on Pharos Atlantic.</div>
 
@@ -558,6 +700,17 @@ tr:hover td{background:rgba(255,255,255,.015);}
       </div>
     </div>
   </div>
+
+  <!-- MOBILE BOTTOM NAV (worker) -->
+  <nav class="mob-nav" id="w-mob-nav">
+    <div class="mob-nav-items">
+      <button class="mob-nav-item wactive" id="wmn-dashboard" onclick="wnav('dashboard',null);setMobNav('w','dashboard')"><span class="mni">◈</span>Dashboard</button>
+      <button class="mob-nav-item" id="wmn-jobs" onclick="wnav('jobs',null);setMobNav('w','jobs')"><span class="mni">💼</span>Jobs</button>
+      <button class="mob-nav-item" id="wmn-earnings" onclick="wnav('earnings',null);setMobNav('w','earnings')"><span class="mni">📈</span>Earnings</button>
+      <button class="mob-nav-item" id="wmn-invoices" onclick="wnav('invoices',null);setMobNav('w','invoices')"><span class="mni">🧾</span>Invoices</button>
+      <button class="mob-nav-item" id="wmn-profile" onclick="wnav('profile',null);setMobNav('w','profile')"><span class="mni">👤</span>Profile</button>
+    </div>
+  </nav>
 </div>
 
 <!-- ══ INVOICE MODAL ═════════════════════════════════════ -->
@@ -592,7 +745,47 @@ tr:hover td{background:rgba(255,255,255,.015);}
 
 <div id="toast"></div>
 
+<!-- ══ MOBILE WALLET PICKER ══════════════════════════════ -->
+<div id="wp-mobile" class="wpmobile">
+  <div class="wp-sheet">
+    <div class="wp-title">Connect Wallet</div>
+    <div class="wp-sub">Choose how you want to connect</div>
+    <div class="wp-options">
+      <!-- Browser extension (if available) -->
+      <div class="wp-option" id="wp-extension" onclick="connectExtension()" style="display:none;">
+        <div class="wp-icon" style="background:rgba(245,185,68,.1);">🔌</div>
+        <div><div class="wp-name">Browser Wallet</div><div class="wp-desc">Rabby, MetaMask or any injected wallet</div></div>
+        <span class="wp-arrow">→</span>
+      </div>
+      <div class="wp-divider" id="wp-divider-ext" style="display:none;"><span>or open in app</span></div>
+      <!-- Mobile app wallets via deeplink -->
+      <div class="wp-option" onclick="openInWallet('metamask')">
+        <div class="wp-icon" style="background:rgba(245,130,32,.12);">🦊</div>
+        <div><div class="wp-name">MetaMask</div><div class="wp-desc">Open in MetaMask mobile app</div></div>
+        <span class="wp-arrow">→</span>
+      </div>
+      <div class="wp-option" onclick="openInWallet('trust')">
+        <div class="wp-icon" style="background:rgba(51,117,254,.12);">🛡️</div>
+        <div><div class="wp-name">Trust Wallet</div><div class="wp-desc">Open in Trust Wallet app</div></div>
+        <span class="wp-arrow">→</span>
+      </div>
+      <div class="wp-option" onclick="openInWallet('coinbase')">
+        <div class="wp-icon" style="background:rgba(0,82,255,.12);">🔵</div>
+        <div><div class="wp-name">Coinbase Wallet</div><div class="wp-desc">Open in Coinbase Wallet app</div></div>
+        <span class="wp-arrow">→</span>
+      </div>
+      <div class="wp-option" onclick="openInWallet('okx')">
+        <div class="wp-icon" style="background:rgba(255,255,255,.06);">⬛</div>
+        <div><div class="wp-name">OKX Wallet</div><div class="wp-desc">Open in OKX Wallet app</div></div>
+        <span class="wp-arrow">→</span>
+      </div>
+    </div>
+    <button class="wp-cancel" onclick="closeWalletPicker()">Cancel</button>
+  </div>
+</div>
+
 <script>
+
 // ══ CONFIG ════════════════════════════════════════════════
 const ATLANTIC = {
   chainId:'0xa8231',
@@ -640,6 +833,85 @@ function startOnboard(role){
   const btn=$('ob-btn');
   btn.className='wc-btn'+(role==='worker'?' teal':'');
   show('screen-onboard');
+}
+
+// ══ MOBILE HELPERS ════════════════════════════════════════
+function isMobile(){ return /Android|iPhone|iPad|iPod|Opera Mini|IEMobile|WPDesktop/i.test(navigator.userAgent); }
+function isInAppBrowser(){ return !!window.ethereum && isMobile(); }
+
+function setMobNav(prefix, page){
+  const pages = prefix==='e'
+    ? ['dashboard','employees','payroll','history','profile']
+    : ['dashboard','jobs','earnings','invoices','profile'];
+  pages.forEach(p=>{
+    const el=$(prefix+'mn-'+p);
+    if(el) el.className='mob-nav-item'+(prefix==='w'?' wactive':'');
+  });
+  const active=$(prefix+'mn-'+page);
+  if(active) active.className='mob-nav-item active';
+}
+
+function updateMobTopbar(){
+  // employer
+  const ew=$('e-mob-wallet'), ed=$('e-mob-dot');
+  if(ew&&walletAddress){ ew.textContent=walletAddress.slice(0,6)+'…'+walletAddress.slice(-4); }
+  // worker
+  const ww=$('w-mob-wallet');
+  if(ww&&walletAddress){ ww.textContent=walletAddress.slice(0,6)+'…'+walletAddress.slice(-4); }
+  syncMobNetDot();
+}
+
+function syncMobNetDot(){
+  const wp=getWalletProvider();
+  if(!wp) return;
+  wp.request({method:'eth_chainId'}).then(chainIdHex=>{
+    const ok=chainIdHex.toLowerCase()===ATLANTIC.chainId.toLowerCase();
+    ['e-mob-dot','w-mob-dot'].forEach(id=>{
+      const d=$(id); if(!d) return;
+      d.className='mob-net-dot '+(ok?'correct':'wrong');
+    });
+  }).catch(()=>{});
+}
+
+// ── Wallet picker ──────────────────────────────────────────
+function handleConnectClick(){
+  const name=$('ob-name').value.trim();
+  if(!name){toast('Enter your name or company name','error');return;}
+  if(isMobile()&&!isInAppBrowser()){
+    // On mobile browser without injected wallet — show picker
+    showWalletPicker();
+  } else {
+    connectAndOnboard();
+  }
+}
+
+function showWalletPicker(){
+  const extOption=$('wp-extension');
+  const extDivider=$('wp-divider-ext');
+  if(window.ethereum){
+    extOption.style.display='flex';
+    if(extDivider) extDivider.style.display='flex';
+  }
+  $('wp-mobile').style.display='flex';
+}
+
+function closeWalletPicker(){ $('wp-mobile').style.display='none'; }
+
+function connectExtension(){
+  closeWalletPicker();
+  connectAndOnboard();
+}
+
+function openInWallet(wallet){
+  const url=encodeURIComponent(window.location.href);
+  const deeplinks={
+    metamask: `https://metamask.app.link/dapp/${window.location.host}${window.location.pathname}`,
+    trust:    `https://link.trustwallet.com/open_url?coin_id=60&url=${url}`,
+    coinbase: `https://go.cb-w.com/dapp?cb_url=${url}`,
+    okx:      `okx://wallet/dapp/url?dappUrl=${url}`,
+  };
+  const link=deeplinks[wallet];
+  if(link) window.location.href=link;
 }
 
 // ══ WALLET ════════════════════════════════════════════════
@@ -690,7 +962,7 @@ function enterEmployer(){
   if(!TEST_MODE) $('e-tbanner').style.display='none';
   localStorage.setItem('pp_last_role','employer');
   show('screen-employer');
-  refreshE(); checkNetwork(); toast('Welcome, '+currentUser.name+' 👋');
+  updateMobTopbar(); refreshE(); checkNetwork(); toast('Welcome, '+currentUser.name+' 👋');
 }
 
 function enav(page, btn){
@@ -908,7 +1180,7 @@ function enterWorker(){
   $('w-greet').textContent=currentUser.name.split(' ')[0];
   if(!TEST_MODE) $('w-tbanner').style.display='none';
   localStorage.setItem('pp_last_role','worker');
-  show('screen-worker'); refreshW(); checkNetwork(); toast('Welcome back, '+currentUser.name+' 👋');
+  show('screen-worker'); updateMobTopbar(); refreshW(); checkNetwork(); toast('Welcome back, '+currentUser.name+' 👋');
 }
 
 function wnav(page,btn){
@@ -1136,6 +1408,7 @@ async function checkNetwork(){
       }
     });
   }catch(_){}
+  syncMobNetDot();
 }
 
 // ══ INIT ══════════════════════════════════════════════════
