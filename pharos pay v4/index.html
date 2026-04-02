@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,700;1,9..144,400&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
+<script src="https://unpkg.com/@walletconnect/web3-provider@1.8.0/dist/umd/index.min.js"></script>
 <style>
 :root {
   --bg:#0d0f14; --bg2:#12151c; --surface:#181c27; --surface2:#1e2333;
@@ -745,41 +746,31 @@ tr:hover td{background:rgba(255,255,255,.015);}
 
 <div id="toast"></div>
 
-<!-- ══ MOBILE WALLET PICKER ══════════════════════════════ -->
+<!-- ══ WALLET PICKER MODAL ═══════════════════════════════ -->
 <div id="wp-mobile" class="wpmobile">
   <div class="wp-sheet">
     <div class="wp-title">Connect Wallet</div>
-    <div class="wp-sub">Choose how you want to connect</div>
+    <div class="wp-sub" id="wp-sub-text">Choose how to connect</div>
     <div class="wp-options">
-      <!-- Browser extension (if available) -->
+      <!-- Extension wallet — shown only if injected provider exists -->
       <div class="wp-option" id="wp-extension" onclick="connectExtension()" style="display:none;">
         <div class="wp-icon" style="background:rgba(245,185,68,.1);">🔌</div>
-        <div><div class="wp-name">Browser Wallet</div><div class="wp-desc">Rabby, MetaMask or any injected wallet</div></div>
+        <div><div class="wp-name">Browser Extension</div><div class="wp-desc">Rabby, MetaMask or any injected wallet</div></div>
         <span class="wp-arrow">→</span>
       </div>
-      <div class="wp-divider" id="wp-divider-ext" style="display:none;"><span>or open in app</span></div>
-      <!-- Mobile app wallets via deeplink -->
-      <div class="wp-option" onclick="openInWallet('metamask')">
-        <div class="wp-icon" style="background:rgba(245,130,32,.12);">🦊</div>
-        <div><div class="wp-name">MetaMask</div><div class="wp-desc">Open in MetaMask mobile app</div></div>
-        <span class="wp-arrow">→</span>
-      </div>
-      <div class="wp-option" onclick="openInWallet('trust')">
-        <div class="wp-icon" style="background:rgba(51,117,254,.12);">🛡️</div>
-        <div><div class="wp-name">Trust Wallet</div><div class="wp-desc">Open in Trust Wallet app</div></div>
-        <span class="wp-arrow">→</span>
-      </div>
-      <div class="wp-option" onclick="openInWallet('coinbase')">
-        <div class="wp-icon" style="background:rgba(0,82,255,.12);">🔵</div>
-        <div><div class="wp-name">Coinbase Wallet</div><div class="wp-desc">Open in Coinbase Wallet app</div></div>
-        <span class="wp-arrow">→</span>
-      </div>
-      <div class="wp-option" onclick="openInWallet('okx')">
-        <div class="wp-icon" style="background:rgba(255,255,255,.06);">⬛</div>
-        <div><div class="wp-name">OKX Wallet</div><div class="wp-desc">Open in OKX Wallet app</div></div>
+      <div class="wp-divider" id="wp-divider-ext" style="display:none;"><span>or use WalletConnect</span></div>
+      <!-- WalletConnect — works on all devices, all wallets -->
+      <div class="wp-option" onclick="connectWC()">
+        <div class="wp-icon" style="background:rgba(59,153,252,.12);">🔗</div>
+        <div>
+          <div class="wp-name">WalletConnect</div>
+          <div class="wp-desc" id="wc-desc">Scan QR with any wallet app</div>
+        </div>
         <span class="wp-arrow">→</span>
       </div>
     </div>
+    <!-- WC status area -->
+    <div id="wc-status" style="display:none;margin-top:16px;padding:14px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);font-size:.75rem;color:var(--ink2);text-align:center;line-height:1.8;"></div>
     <button class="wp-cancel" onclick="closeWalletPicker()">Cancel</button>
   </div>
 </div>
@@ -877,11 +868,11 @@ function syncMobNetDot(){
 function handleConnectClick(){
   const name=$('ob-name').value.trim();
   if(!name){toast('Enter your name or company name','error');return;}
-  // If any injected wallet exists (desktop extension OR in-app browser), connect directly
+  // Extension available → connect directly, no picker needed
   if(getWalletProvider()){
     connectAndOnboard();
   } else {
-    // No injected wallet — mobile without extension, show app wallet picker
+    // No extension — show picker with WalletConnect option
     showWalletPicker();
   }
 }
@@ -889,31 +880,98 @@ function handleConnectClick(){
 function showWalletPicker(){
   const extOption=$('wp-extension');
   const extDivider=$('wp-divider-ext');
-  // Show extension option only if one is actually available
   if(getWalletProvider()){
     if(extOption) extOption.style.display='flex';
     if(extDivider) extDivider.style.display='flex';
   }
+  // Update WC description based on device
+  const wcDesc=$('wc-desc');
+  if(wcDesc) wcDesc.textContent=isMobile()?'Tap to open your wallet app':'Scan QR code with any wallet app';
+  $('wc-status').style.display='none';
   $('wp-mobile').style.display='flex';
 }
 
-function closeWalletPicker(){ $('wp-mobile').style.display='none'; }
+function closeWalletPicker(){
+  $('wp-mobile').style.display='none';
+  $('wc-status').style.display='none';
+  // Disconnect any pending WC session
+  if(window._wcProvider){
+    try{ window._wcProvider.disconnect(); }catch(_){}
+    window._wcProvider=null;
+  }
+}
 
 function connectExtension(){
   closeWalletPicker();
   connectAndOnboard();
 }
 
-function openInWallet(wallet){
-  const url=encodeURIComponent(window.location.href);
-  const deeplinks={
-    metamask: `https://metamask.app.link/dapp/${window.location.host}${window.location.pathname}`,
-    trust:    `https://link.trustwallet.com/open_url?coin_id=60&url=${url}`,
-    coinbase: `https://go.cb-w.com/dapp?cb_url=${url}`,
-    okx:      `okx://wallet/dapp/url?dappUrl=${url}`,
-  };
-  const link=deeplinks[wallet];
-  if(link) window.location.href=link;
+// ── WalletConnect ──────────────────────────────────────────
+async function connectWC(){
+  const name=$('ob-name').value.trim();
+  if(!name){ toast('Enter your name first','error'); return; }
+
+  // Check SDK loaded
+  if(!window.WalletConnectProvider){
+    toast('WalletConnect is loading, try again in a moment','error');
+    return;
+  }
+
+  const statusEl=$('wc-status');
+  statusEl.style.display='block';
+  statusEl.innerHTML='<span class="spin" style="display:inline-block;width:14px;height:14px;border:2px solid var(--border2);border-top-color:var(--teal);border-radius:50%;animation:rot .5s linear infinite;vertical-align:middle;margin-right:8px;"></span> Initialising WalletConnect…';
+
+  try{
+    const wcProvider = new WalletConnectProvider.default({
+      rpc:{ 688689: ATLANTIC.rpcUrls[0] },
+      chainId: ATLANTIC.chainIdDec,
+      qrcodeModalOptions:{
+        mobileLinks:['metamask','trust','rainbow','argent','imtoken','pillar','ledger'],
+      },
+    });
+
+    window._wcProvider = wcProvider;
+
+    // On mobile, WC auto deep-links to wallet app; on desktop it shows QR modal
+    wcProvider.on('display_uri', uri=>{
+      if(isMobile()){
+        statusEl.innerHTML='📱 Opening your wallet app…<br/><small style="color:var(--ink3);">Approve the connection in your wallet</small>';
+      } else {
+        statusEl.innerHTML='📷 Scan the QR code in your wallet app<br/><small style="color:var(--ink3);">The QR modal should have appeared</small>';
+      }
+    });
+
+    wcProvider.on('connect', ()=>{
+      statusEl.innerHTML='<span style="color:var(--green);">✓ Connected! Loading dashboard…</span>';
+    });
+
+    wcProvider.on('disconnect', ()=>{
+      localStorage.removeItem('pp_last_role');
+      location.reload();
+    });
+
+    await wcProvider.enable();
+
+    // Connected — build ethers provider from WC
+    provider = new ethers.providers.Web3Provider(wcProvider, 'any');
+    signer   = provider.getSigner();
+    walletAddress = await signer.getAddress();
+
+    const role = $('ob-role').value || 'Worker';
+    currentUser = {name, role, wallet:walletAddress, joinedAt:Date.now()};
+    db.s('profile', currentUser);
+
+    closeWalletPicker();
+    currentRole==='employer' ? enterEmployer() : enterWorker();
+
+  }catch(e){
+    const msg = e?.message||'';
+    if(msg.includes('User closed') || msg.includes('rejected') || msg.includes('cancel')){
+      statusEl.innerHTML='<span style="color:var(--ink3);">Connection cancelled.</span>';
+    } else {
+      statusEl.innerHTML=`<span style="color:var(--red);">✕ ${msg.slice(0,80)||'Connection failed'}</span>`;
+    }
+  }
 }
 
 // ══ WALLET ════════════════════════════════════════════════
