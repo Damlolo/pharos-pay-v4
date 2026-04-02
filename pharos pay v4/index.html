@@ -637,7 +637,7 @@ tr:hover td{background:rgba(255,255,255,.015);}
       <div class="ph"><div><div class="pt">Good work, <span id="w-greet">—</span> 👋</div><div class="ps">Earnings overview · Pharos Atlantic</div></div></div>
       <div class="srow">
         <div class="sc t"><div class="si">💰</div><div class="sl">Total Earned</div><div class="sv">$<span id="w-s-total">0</span></div><div style="font-size:.65rem;color:var(--ink3);margin-top:6px;">USDC received</div></div>
-        <div class="sc t"><div class="si">📋</div><div class="sl">Jobs Paid</div><div class="sv" id="w-s-jobs">0</div><div style="font-size:.65rem;color:var(--ink3);margin-top:6px;">Payments received</div></div>
+        <div class="sc t"><div class="si">📋</div><div class="sl">Jobs Completed</div><div class="sv" id="w-s-jobs">0</div><div style="font-size:.65rem;color:var(--ink3);margin-top:6px;">Paid</div></div>
         <div class="sc t"><div class="si">🏢</div><div class="sl">Employers</div><div class="sv" id="w-s-emps">0</div><div style="font-size:.65rem;color:var(--ink3);margin-top:6px;">Worked with</div></div>
         <div class="sc t"><div class="si">📅</div><div class="sl">This Month</div><div class="sv">$<span id="w-s-month">0</span></div><div style="font-size:.65rem;color:var(--ink3);margin-top:6px;">USDC earned</div></div>
       </div>
@@ -686,7 +686,7 @@ tr:hover td{background:rgba(255,255,255,.015);}
       </div>
       <div class="srow">
         <div class="sc t"><div class="sl">Total Earned</div><div class="sv">$<span id="wp-total">0</span></div></div>
-        <div class="sc t"><div class="sl">Jobs Done</div><div class="sv" id="wp-jobs">0</div></div>
+        <div class="sc t"><div class="sl">Jobs Done</div><div class="sv" id="wp-jobs-done">0</div></div>
         <div class="sc t"><div class="sl">Employers</div><div class="sv" id="wp-emps">0</div></div>
         <div class="sc t"><div class="sl">Member Since</div><div class="sv" id="wp-since" style="font-size:.9rem;">—</div></div>
       </div>
@@ -1258,19 +1258,10 @@ function enterWorker(){
 }
 
 function wnav(page,btn){
-  // Reset sidebar nav active states
   document.querySelectorAll('#screen-worker .nav-item').forEach(b=>b.classList.remove('active'));
-  // Always activate correct sidebar button by matching page name in onclick
-  document.querySelectorAll('#screen-worker .sidebar .nav-item').forEach(b=>{
-    if((b.getAttribute('onclick')||'').indexOf("'"+page+"'")!==-1) b.classList.add('active');
-  });
-  // Switch pages — explicitly hide all, then show target
-  document.querySelectorAll('#screen-worker .page').forEach(p=>{
-    p.classList.remove('active');
-    p.style.display='none';
-  });
-  const pg=$('wp-'+page);
-  if(pg){ pg.style.display='block'; pg.classList.add('active'); }
+  if(btn) btn.classList.add('active');
+  document.querySelectorAll('#screen-worker .page').forEach(p=>p.classList.remove('active'));
+  $('wp-'+page).classList.add('active');
   if(page==='dashboard') refreshW();
   if(page==='jobs') renderWJobs();
   if(page==='earnings') renderWEarnings();
@@ -1317,85 +1308,35 @@ function renderWChart(){
 function renderWJobs(){
   const pays=myPays(), el=$('w-jobs-list');
   const doneMap=JSON.parse(localStorage.getItem('pp_done_jobs')||'{}');
-  // Clear container safely
-  while(el.firstChild) el.removeChild(el.firstChild);
-  if(!pays.length){
-    el.innerHTML='<div class="empty"><div class="ei">💼</div>No jobs found. Ask your employer to add you and run payroll.</div>';
-    return;
-  }
-  pays.forEach(function(p){
+  if(!pays.length){el.innerHTML='<div class="empty"><div class="ei">💼</div>No jobs found. Ask your employer to add you and run payroll.</div>';return;}
+  el.innerHTML=pays.map(p=>{
     const isDone=!!doneMap[p.id];
     const assignedDate=fmtD(p.timestamp);
     const doneDate=isDone&&doneMap[p.id].doneAt?fmtD(doneMap[p.id].doneAt):'';
-
-    // Outer card
-    const card=document.createElement('div');
-    card.className='jc '+(isDone?'paid':p.testMode?'pending':'paid');
-    card.id='jc-'+p.id;
-    if(isDone) card.style.opacity='0.75';
-
-    // Left section
-    const left=document.createElement('div');
-    left.style.cssText='flex:1;min-width:0;';
-
-    // Badge row
-    const badges=document.createElement('div');
-    badges.style.cssText='display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;';
-    const b1=document.createElement('span'); b1.className='badge bat'; b1.textContent=p.role;
-    const b2=document.createElement('span'); b2.className=isDone?'badge bav':'badge bam'; b2.textContent=isDone?'✓ Done':'In Progress';
-    const b3=document.createElement('span'); b3.className=p.testMode?'badge bam':'badge bav'; b3.textContent=p.testMode?'Simulated':'Paid';
-    badges.appendChild(b1); badges.appendChild(b2); badges.appendChild(b3);
-
-    // Description
-    const desc=document.createElement('div');
-    desc.className='jt'; desc.style.marginBottom='4px'; desc.textContent=p.description;
-
-    // Employer
-    const emp=document.createElement('div');
-    emp.className='je'; emp.style.marginBottom='3px';
-    emp.innerHTML='🏢 <strong>'+(p.fromName||p.from.slice(0,10)+'…')+'</strong>';
-
-    // Dates
-    const dates=document.createElement('div');
-    dates.className='jp_';
-    dates.textContent='📅 Assigned: '+assignedDate+(p.period?' · '+p.period:'')+(doneDate?' · Completed: '+doneDate:'');
-
-    left.appendChild(badges); left.appendChild(desc); left.appendChild(emp); left.appendChild(dates);
-
-    // Right section
-    const right=document.createElement('div');
-    right.style.cssText='display:flex;flex-direction:column;align-items:flex-end;gap:8px;flex-shrink:0;';
-
-    const amt=document.createElement('div');
-    amt.className='jamount';
-    amt.innerHTML='$'+p.amount.toLocaleString()+' <span style="font-size:.65rem;color:var(--ink3);">USDC</span>';
-
-    const btns=document.createElement('div');
-    btns.style.cssText='display:flex;gap:8px;align-items:center;';
-
-    // Invoice button — addEventListener, NO inline onclick
-    const invBtn=document.createElement('button');
-    invBtn.className='btn bt xs'; invBtn.textContent='🧾';
-    invBtn.addEventListener('click',(function(pay){ return function(){ showInv(pay); }; })(p));
-
-    btns.appendChild(invBtn);
-
-    if(isDone){
-      const doneLabel=document.createElement('span');
-      doneLabel.style.cssText='font-size:.7rem;color:var(--green);font-weight:500;';
-      doneLabel.textContent='✓ Marked done';
-      btns.appendChild(doneLabel);
-    } else {
-      const doneBtn=document.createElement('button');
-      doneBtn.className='btn bg xs'; doneBtn.style.whiteSpace='nowrap'; doneBtn.textContent='Mark Done ✓';
-      doneBtn.addEventListener('click',(function(id){ return function(){ markJobDone(id); }; })(p.id));
-      btns.appendChild(doneBtn);
-    }
-
-    right.appendChild(amt); right.appendChild(btns);
-    card.appendChild(left); card.appendChild(right);
-    el.appendChild(card);
-  });
+    return `
+    <div class="jc ${isDone?'paid':p.testMode?'pending':'paid'}" id="jc-${p.id}" style="${isDone?'opacity:.75;':''}">
+      <div style="flex:1;min-width:0;">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
+          <span class="badge bat">${p.role}</span>
+          <span class="${isDone?'badge bav':'badge bam'}">${isDone?'✓ Done':'In Progress'}</span>
+          ${p.testMode?'<span class="badge bam">Simulated</span>':'<span class="badge bav">Paid</span>'}
+        </div>
+        <div class="jt" style="margin-bottom:4px;">${p.description}</div>
+        <div class="je" style="margin-bottom:3px;">🏢 <strong>${p.fromName||p.from.slice(0,10)+'…'}</strong></div>
+        <div class="jp_">📅 Assigned: ${assignedDate}${p.period?' · '+p.period:''}${doneDate?' · Completed: '+doneDate:''}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;flex-shrink:0;">
+        <div class="jamount">$${p.amount.toLocaleString()} <span style="font-size:.65rem;color:var(--ink3);">USDC</span></div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button class="btn bt xs" onclick='showInv(${JSON.stringify(p)})'>🧾</button>
+          ${isDone
+            ? `<span style="font-size:.7rem;color:var(--green);font-weight:500;">✓ Marked done</span>`
+            : `<button class="btn bg xs" onclick="markJobDone('${p.id}')" style="white-space:nowrap;">Mark Done ✓</button>`
+          }
+        </div>
+      </div>
+    </div>`;
+  }).join('');
 }
 
 function markJobDone(jobId){
@@ -1459,7 +1400,7 @@ function renderWProfile(){
   $('w-pav').textContent=init; $('w-pname').textContent=currentUser.name||'—';
   $('w-pwallet').textContent=walletAddress||'—'; $('w-prole').textContent=currentUser.role||'Worker';
   $('w-rep').textContent=rep; $('wp-total').textContent=total.toLocaleString();
-  $('wp-jobs').textContent=doneCount; $('wp-emps').textContent=emps; $('wp-since').textContent=since;
+  $('wp-jobs-done').textContent=doneCount; $('wp-emps').textContent=emps; $('wp-since').textContent=since;
   $('w-plink').value=`${location.origin}?worker=${walletAddress||'demo'}`;
 }
 function copyPLink(){navigator.clipboard.writeText($('w-plink').value).then(()=>toast('Profile link copied!','info'));}
