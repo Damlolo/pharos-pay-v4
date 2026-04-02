@@ -637,7 +637,7 @@ tr:hover td{background:rgba(255,255,255,.015);}
       <div class="ph"><div><div class="pt">Good work, <span id="w-greet">—</span> 👋</div><div class="ps">Earnings overview · Pharos Atlantic</div></div></div>
       <div class="srow">
         <div class="sc t"><div class="si">💰</div><div class="sl">Total Earned</div><div class="sv">$<span id="w-s-total">0</span></div><div style="font-size:.65rem;color:var(--ink3);margin-top:6px;">USDC received</div></div>
-        <div class="sc t"><div class="si">📋</div><div class="sl">Jobs Completed</div><div class="sv" id="w-s-jobs">0</div><div style="font-size:.65rem;color:var(--ink3);margin-top:6px;">Paid</div></div>
+        <div class="sc t"><div class="si">📋</div><div class="sl">Jobs Paid</div><div class="sv" id="w-s-jobs">0</div><div style="font-size:.65rem;color:var(--ink3);margin-top:6px;">Payments received</div></div>
         <div class="sc t"><div class="si">🏢</div><div class="sl">Employers</div><div class="sv" id="w-s-emps">0</div><div style="font-size:.65rem;color:var(--ink3);margin-top:6px;">Worked with</div></div>
         <div class="sc t"><div class="si">📅</div><div class="sl">This Month</div><div class="sv">$<span id="w-s-month">0</span></div><div style="font-size:.65rem;color:var(--ink3);margin-top:6px;">USDC earned</div></div>
       </div>
@@ -1258,12 +1258,19 @@ function enterWorker(){
 }
 
 function wnav(page,btn){
+  // Clear all nav active states
   document.querySelectorAll('#screen-worker .nav-item').forEach(b=>b.classList.remove('active'));
-  if(btn) btn.classList.add('active');
+  // Always find and activate the correct sidebar button by matching its onclick attribute
+  const sidebarBtns=document.querySelectorAll('#screen-worker .sidebar .nav-item');
+  sidebarBtns.forEach(b=>{
+    if(b.getAttribute('onclick')&&b.getAttribute('onclick').includes("'"+page+"'")) b.classList.add('active');
+  });
+  // Switch pages
   document.querySelectorAll('#screen-worker .page').forEach(p=>p.classList.remove('active'));
-  $('wp-'+page).classList.add('active');
+  const target=$('wp-'+page);
+  if(target){ target.classList.add('active'); void target.offsetHeight; } // force reflow to prevent layout glitch
   if(page==='dashboard') refreshW();
-  if(page==='jobs') renderWJobs();
+  if(page==='jobs'){ renderWJobs(); }
   if(page==='earnings') renderWEarnings();
   if(page==='invoices') renderWInvoices();
   if(page==='profile') renderWProfile();
@@ -1281,7 +1288,7 @@ function refreshW(){
   const emps=[...new Set(pays.map(p=>p.from))].length;
   const doneMap=JSON.parse(localStorage.getItem('pp_done_jobs')||'{}');
   const doneCount=pays.filter(p=>!!doneMap[p.id]).length;
-  $('w-s-total').textContent=total.toLocaleString(); $('w-s-jobs').textContent=doneCount;
+  $('w-s-total').textContent=total.toLocaleString(); $('w-s-jobs').textContent=pays.length;
   $('w-s-emps').textContent=emps; $('w-s-month').textContent=month.toLocaleString();
   renderWRecent(); renderWChart();
 }
