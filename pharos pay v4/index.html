@@ -1226,9 +1226,12 @@ async function doPay({toAddr,toName,role,amount,desc,period}){
 
 function savePay(p){const pays=db.payments();pays.unshift(p);db.s('payments',pays);}
 
+window._ePayMap={};
+
 function renderEHistory(){
   const pays=db.payments(), tb=$('e-hist-tb');
   if(!pays.length){tb.innerHTML='<tr><td colspan="8"><div class="empty">No payments yet.</div></td></tr>';return;}
+  window._ePayMap={}; pays.forEach(p=>{ window._ePayMap[p.id]=p; });
   tb.innerHTML=pays.map(p=>`<tr>
     <td><div style="font-weight:500;font-size:.8rem;">${p.toName}</div><div style="font-size:.62rem;color:var(--ink3);">${p.to.slice(0,8)}…${p.to.slice(-4)}</div></td>
     <td><span class="badge bag">${p.role}</span></td>
@@ -1237,7 +1240,7 @@ function renderEHistory(){
     <td style="font-size:.72rem;color:var(--ink3);">${p.period}</td>
     <td style="font-size:.7rem;">${fmtD(p.timestamp)}</td>
     <td>${p.testMode?'<span class="badge bam">Simulated</span>':'<span class="badge bav">Confirmed</span>'}</td>
-    <td><button class="btn bgh xs" onclick='showInv(${JSON.stringify(p)})'>🧾</button></td>
+    <td><button class="btn bgh xs" onclick="showInv(window._ePayMap['"+p.id+"'])">🧾</button></td>
   </tr>`).join('');
 }
 
@@ -1258,19 +1261,17 @@ function enterWorker(){
 }
 
 function wnav(page,btn){
-  // Clear all nav active states
   document.querySelectorAll('#screen-worker .nav-item').forEach(b=>b.classList.remove('active'));
-  // Always find and activate the correct sidebar button by matching its onclick attribute
-  const sidebarBtns=document.querySelectorAll('#screen-worker .sidebar .nav-item');
-  sidebarBtns.forEach(b=>{
-    if(b.getAttribute('onclick')&&b.getAttribute('onclick').includes("'"+page+"'")) b.classList.add('active');
+  // Always activate the correct sidebar button by page name
+  document.querySelectorAll('#screen-worker .sidebar .nav-item').forEach(b=>{
+    const oc=b.getAttribute('onclick')||'';
+    if(oc.includes("'"+page+"'")) b.classList.add('active');
   });
-  // Switch pages
   document.querySelectorAll('#screen-worker .page').forEach(p=>p.classList.remove('active'));
-  const target=$('wp-'+page);
-  if(target){ target.classList.add('active'); void target.offsetHeight; } // force reflow to prevent layout glitch
+  const _pg=$('wp-'+page);
+  if(_pg){ _pg.classList.add('active'); void _pg.offsetHeight; }
   if(page==='dashboard') refreshW();
-  if(page==='jobs'){ renderWJobs(); }
+  if(page==='jobs') renderWJobs();
   if(page==='earnings') renderWEarnings();
   if(page==='invoices') renderWInvoices();
   if(page==='profile') renderWProfile();
@@ -1295,13 +1296,14 @@ function refreshW(){
 
 function renderWRecent(){
   const pays=myPays().slice(0,5),el=$('w-recent');
+  pays.forEach(p=>{ window._payMap[p.id]=p; }); // keep map fresh
   if(!pays.length){el.innerHTML='<div class="empty"><div class="ei">💼</div>No payments received yet.</div>';return;}
   el.innerHTML=pays.map(p=>`
     <div class="jc ${p.testMode?'pending':'paid'}">
       <div><div class="jt">${p.description}</div><div class="je">from ${p.fromName||p.from.slice(0,10)+'…'} · <span class="jp_">${p.period}</span></div></div>
       <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
         <div style="text-align:right;"><div class="jamount">$${p.amount.toLocaleString()}</div><div style="font-size:.62rem;color:var(--ink3);">${p.testMode?'simulated':'USDC'}</div></div>
-        <button class="btn bt xs" onclick='showInv(${JSON.stringify(p)})'>Invoice</button>
+        <button class="btn bt xs" onclick="showInv(window._payMap['"+p.id+"'])">Invoice</button>
       </div>
     </div>`).join('');
 }
@@ -1312,14 +1314,21 @@ function renderWChart(){
   $('w-chart-l').innerHTML=months.map(m=>`<div style="font-size:.58rem;color:var(--ink3);flex:1;text-align:center;">${m.l}</div>`).join('');
 }
 
+// Payment lookup map – avoids JSON.stringify inside onclick attrs (breaks on quotes/apostrophes)
+window._payMap={};
+
 function renderWJobs(){
   const pays=myPays(), el=$('w-jobs-list');
   const doneMap=JSON.parse(localStorage.getItem('pp_done_jobs')||'{}');
   if(!pays.length){el.innerHTML='<div class="empty"><div class="ei">💼</div>No jobs found. Ask your employer to add you and run payroll.</div>';return;}
+  // Rebuild map so invoice button always has a valid reference
+  window._payMap={};
+  pays.forEach(p=>{ window._payMap[p.id]=p; });
   el.innerHTML=pays.map(p=>{
     const isDone=!!doneMap[p.id];
     const assignedDate=fmtD(p.timestamp);
     const doneDate=isDone&&doneMap[p.id].doneAt?fmtD(doneMap[p.id].doneAt):'';
+    const sid=p.id.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
     return `
     <div class="jc ${isDone?'paid':p.testMode?'pending':'paid'}" id="jc-${p.id}" style="${isDone?'opacity:.75;':''}">
       <div style="flex:1;min-width:0;">
@@ -1335,10 +1344,10 @@ function renderWJobs(){
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;flex-shrink:0;">
         <div class="jamount">$${p.amount.toLocaleString()} <span style="font-size:.65rem;color:var(--ink3);">USDC</span></div>
         <div style="display:flex;gap:8px;align-items:center;">
-          <button class="btn bt xs" onclick='showInv(${JSON.stringify(p)})'>🧾</button>
+          <button class="btn bt xs" onclick="showInv(window._payMap['${sid}'])">🧾</button>
           ${isDone
             ? `<span style="font-size:.7rem;color:var(--green);font-weight:500;">✓ Marked done</span>`
-            : `<button class="btn bg xs" onclick="markJobDone('${p.id}')" style="white-space:nowrap;">Mark Done ✓</button>`
+            : `<button class="btn bg xs" onclick="markJobDone('${sid}')" style="white-space:nowrap;">Mark Done ✓</button>`
           }
         </div>
       </div>
@@ -1379,6 +1388,7 @@ function renderWEarnings(){
 
 function renderWInvoices(){
   const pays=myPays(),el=$('w-inv-list');
+  pays.forEach(p=>{ window._payMap[p.id]=p; }); // keep map fresh
   if(!pays.length){el.innerHTML='<div class="empty"><div class="ei">🧾</div>No invoices yet. They auto-generate with each payment.</div>';return;}
   el.innerHTML=pays.map((p,i)=>`
     <div style="display:flex;align-items:center;justify-content:space-between;padding:14px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;margin-bottom:10px;gap:16px;flex-wrap:wrap;">
@@ -1390,8 +1400,8 @@ function renderWInvoices(){
       </div>
       <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
         <div style="font-family:var(--serif);font-size:1.1rem;color:var(--teal);">$${p.amount.toLocaleString()} USDC</div>
-        <button class="btn bt sm" onclick='showInv(${JSON.stringify(p)})'>View</button>
-        <button class="btn bgh sm" onclick='printInvoice(${JSON.stringify(p)})'>↓ PDF</button>
+        <button class="btn bt sm" onclick="showInv(window._payMap['"+p.id+"'])">View</button>
+        <button class="btn bgh sm" onclick="printInvoice(window._payMap['"+p.id+"'])">↓ PDF</button>
       </div>
     </div>`).join('');
 }
