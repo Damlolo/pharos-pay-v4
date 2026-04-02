@@ -466,7 +466,7 @@ tr:hover td{background:rgba(255,255,255,.015);}
         <span id="e-net-label">Checking…</span>
         <span class="net-switch-icon">⇌</span>
       </div>
-      <button class="switch-btn" style="margin-top:8px;" onclick="goLanding()">⇄ Switch Role</button>
+      <button class="switch-btn" style="margin-top:8px;" onclick="disconnectWallet()">⏻ Disconnect Wallet</button>
     </div>
   </aside>
 
@@ -476,7 +476,7 @@ tr:hover td{background:rgba(255,255,255,.015);}
     <div class="mob-wallet-info">
       <span class="mob-net-dot" id="e-mob-dot"></span>
       <span id="e-mob-wallet">—</span>
-      <button class="mob-switch-btn" onclick="goLanding()">⇄</button>
+      <button class="mob-switch-btn" onclick="disconnectWallet()" title="Disconnect">⏻</button>
     </div>
   </div>
 
@@ -615,7 +615,7 @@ tr:hover td{background:rgba(255,255,255,.015);}
         <span id="w-net-label">Checking…</span>
         <span class="net-switch-icon">⇌</span>
       </div>
-      <button class="switch-btn" style="margin-top:8px;" onclick="goLanding()">⇄ Switch Role</button>
+      <button class="switch-btn" style="margin-top:8px;" onclick="disconnectWallet()">⏻ Disconnect Wallet</button>
     </div>
   </aside>
 
@@ -625,7 +625,7 @@ tr:hover td{background:rgba(255,255,255,.015);}
     <div class="mob-wallet-info">
       <span class="mob-net-dot" id="w-mob-dot"></span>
       <span id="w-mob-wallet">—</span>
-      <button class="mob-switch-btn" onclick="goLanding()">⇄</button>
+      <button class="mob-switch-btn" onclick="disconnectWallet()" title="Disconnect">⏻</button>
     </div>
   </div>
 
@@ -814,6 +814,17 @@ const $=id=>document.getElementById(id);
 // ══ ROUTING ═══════════════════════════════════════════════
 function show(id){ document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active')); $(id).classList.add('active'); }
 function goLanding(){ localStorage.removeItem('pp_last_role'); provider=null; signer=null; walletAddress=null; currentRole=null; currentUser={}; show('screen-landing'); }
+
+async function disconnectWallet(){
+  // Disconnect WalletConnect if active
+  if(window._wcProvider){ try{ await window._wcProvider.disconnect(); }catch(_){} window._wcProvider=null; }
+  // Clear all session data so they must reconnect fresh
+  localStorage.removeItem('pp_last_role');
+  localStorage.removeItem('pp_profile');
+  provider=null; signer=null; walletAddress=null; currentRole=null; currentUser={};
+  show('screen-landing');
+  toast('Wallet disconnected. Connect a new wallet to switch roles.','info');
+}
 
 function startOnboard(role){
   currentRole=role;
@@ -1268,7 +1279,9 @@ function refreshW(){
   const now=new Date(),m=now.getMonth(),y=now.getFullYear();
   const month=pays.filter(p=>{const d=new Date(p.timestamp);return d.getMonth()===m&&d.getFullYear()===y;}).reduce((s,p)=>s+p.amount,0);
   const emps=[...new Set(pays.map(p=>p.from))].length;
-  $('w-s-total').textContent=total.toLocaleString(); $('w-s-jobs').textContent=pays.length;
+  const doneMap=JSON.parse(localStorage.getItem('pp_done_jobs')||'{}');
+  const doneCount=pays.filter(p=>!!doneMap[p.id]).length;
+  $('w-s-total').textContent=total.toLocaleString(); $('w-s-jobs').textContent=doneCount;
   $('w-s-emps').textContent=emps; $('w-s-month').textContent=month.toLocaleString();
   renderWRecent(); renderWChart();
 }
@@ -1293,16 +1306,52 @@ function renderWChart(){
 }
 
 function renderWJobs(){
-  const pays=myPays(),el=$('w-jobs-list');
+  const pays=myPays(), el=$('w-jobs-list');
+  const doneMap=JSON.parse(localStorage.getItem('pp_done_jobs')||'{}');
   if(!pays.length){el.innerHTML='<div class="empty"><div class="ei">💼</div>No jobs found. Ask your employer to add you and run payroll.</div>';return;}
-  el.innerHTML=pays.map(p=>`
-    <div class="jc ${p.testMode?'pending':'paid'}">
-      <div><div class="jt"><strong>${p.role}</strong> — ${p.description}</div><div class="je">from ${p.fromName||p.from.slice(0,10)+'…'}</div><div class="jp_">📅 ${p.period} · ${fmtD(p.timestamp)}</div></div>
-      <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
-        <div style="text-align:right;"><div class="jamount">$${p.amount.toLocaleString()}</div><span class="${p.testMode?'badge bam':'badge bav'}">${p.testMode?'Simulated':'Paid'}</span></div>
-        <button class="btn bt xs" onclick='showInv(${JSON.stringify(p)})'>🧾</button>
+  el.innerHTML=pays.map(p=>{
+    const isDone=!!doneMap[p.id];
+    const assignedDate=fmtD(p.timestamp);
+    const doneDate=isDone&&doneMap[p.id].doneAt?fmtD(doneMap[p.id].doneAt):'';
+    return `
+    <div class="jc ${isDone?'paid':p.testMode?'pending':'paid'}" id="jc-${p.id}" style="${isDone?'opacity:.75;':''}">
+      <div style="flex:1;min-width:0;">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
+          <span class="badge bat">${p.role}</span>
+          <span class="${isDone?'badge bav':'badge bam'}">${isDone?'✓ Done':'In Progress'}</span>
+          ${p.testMode?'<span class="badge bam">Simulated</span>':'<span class="badge bav">Paid</span>'}
+        </div>
+        <div class="jt" style="margin-bottom:4px;">${p.description}</div>
+        <div class="je" style="margin-bottom:3px;">🏢 <strong>${p.fromName||p.from.slice(0,10)+'…'}</strong></div>
+        <div class="jp_">📅 Assigned: ${assignedDate}${p.period?' · '+p.period:''}${doneDate?' · Completed: '+doneDate:''}</div>
       </div>
-    </div>`).join('');
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;flex-shrink:0;">
+        <div class="jamount">$${p.amount.toLocaleString()} <span style="font-size:.65rem;color:var(--ink3);">USDC</span></div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button class="btn bt xs" onclick='showInv(${JSON.stringify(p)})'>🧾</button>
+          ${isDone
+            ? `<span style="font-size:.7rem;color:var(--green);font-weight:500;">✓ Marked done</span>`
+            : `<button class="btn bg xs" onclick="markJobDone('${p.id}')" style="white-space:nowrap;">Mark Done ✓</button>`
+          }
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function markJobDone(jobId){
+  const doneMap=JSON.parse(localStorage.getItem('pp_done_jobs')||'{}');
+  if(doneMap[jobId]) return; // already done
+  doneMap[jobId]={doneAt:Date.now()};
+  localStorage.setItem('pp_done_jobs',JSON.stringify(doneMap));
+  // Notify employer via a "completions" log they can see
+  const completions=JSON.parse(localStorage.getItem('pp_completions')||'[]');
+  const pay=myPays().find(p=>p.id===jobId);
+  if(pay) completions.unshift({jobId,workerName:currentUser.name,workerWallet:walletAddress,role:pay.role,description:pay.description,amount:pay.amount,doneAt:Date.now()});
+  localStorage.setItem('pp_completions',JSON.stringify(completions));
+  toast('Job marked as done! Employer has been notified ✓','success');
+  renderWJobs();
+  renderWProfile(); // update Jobs Done count
 }
 
 function renderWEarnings(){
@@ -1342,13 +1391,16 @@ function renderWInvoices(){
 
 function renderWProfile(){
   const pays=myPays(),total=pays.reduce((s,p)=>s+p.amount,0),emps=[...new Set(pays.map(p=>p.from))].length;
-  const rep=Math.min(Math.round(pays.length*10+emps*15+total/100),999);
+  // Jobs Done = jobs explicitly marked done via toggle
+  const doneMap=JSON.parse(localStorage.getItem('pp_done_jobs')||'{}');
+  const doneCount=pays.filter(p=>!!doneMap[p.id]).length;
+  const rep=Math.min(Math.round(doneCount*10+emps*15+total/100),999);
   const init=(currentUser.name||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
   const since=currentUser.joinedAt?new Date(currentUser.joinedAt).toLocaleString('default',{month:'short',year:'numeric'}):'—';
   $('w-pav').textContent=init; $('w-pname').textContent=currentUser.name||'—';
   $('w-pwallet').textContent=walletAddress||'—'; $('w-prole').textContent=currentUser.role||'Worker';
   $('w-rep').textContent=rep; $('wp-total').textContent=total.toLocaleString();
-  $('wp-jobs').textContent=pays.length; $('wp-emps').textContent=emps; $('wp-since').textContent=since;
+  $('wp-jobs').textContent=doneCount; $('wp-emps').textContent=emps; $('wp-since').textContent=since;
   $('w-plink').value=`${location.origin}?worker=${walletAddress||'demo'}`;
 }
 function copyPLink(){navigator.clipboard.writeText($('w-plink').value).then(()=>toast('Profile link copied!','info'));}
