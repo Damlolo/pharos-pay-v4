@@ -8,7 +8,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,700;1,9..144,400&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
 <script src="https://unpkg.com/@walletconnect/web3-provider@1.8.0/dist/umd/index.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 :root {
   --bg:#0d0f14; --bg2:#12151c; --surface:#181c27; --surface2:#1e2333;
@@ -862,27 +862,22 @@ let _sb = null;
 function getSB(){
   if(_sb) return _sb;
   try{
-    // UMD bundle may expose as window.supabase or window.supabase.default
     const lib = (window.supabase && window.supabase.createClient)
       ? window.supabase
-      : (window.supabase && window.supabase.default && window.supabase.default.createClient)
+      : (window.supabase && window.supabase.default)
         ? window.supabase.default
         : null;
-    if(!lib){
-      console.error('Supabase SDK not loaded — window.supabase:', window.supabase);
-      setSyncUI('error','SDK not loaded');
-      return null;
-    }
+    if(!lib){ setSyncUI('error','SDK not loaded'); return null; }
     _sb = lib.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       auth:{ persistSession:false },
       realtime:{ params:{ eventsPerSecond:10 }}
     });
     console.log('Supabase client created ✓');
     return _sb;
-  }catch(e){ console.error('Supabase init error:', e); setSyncUI('error','Init failed: '+e.message); return null; }
+  }catch(e){ setSyncUI('error','Init: '+e.message); return null; }
 }
 
-// ── Sync status badge helper ─────────────────────────────────────────
+// ── Sync status badge ─────────────────────────────────────────────────
 function setSyncUI(state, msg){
   const color = state==='ok'?'var(--green)': state==='error'?'var(--red)':'var(--gold)';
   const icon  = state==='ok'?'☁': state==='error'?'⚠':'↻';
@@ -892,66 +887,142 @@ function setSyncUI(state, msg){
   });
 }
 
-// ── DB ───────────────────────────────────────────────────────────────
-// Design:
-//   • All reads are SYNCHRONOUS from localStorage cache → UI never waits/blinks
-//   • All writes go to cache first (instant) then async to Supabase
-//   • syncFromCloud() pulls ALL keys once → called at login + every 30 s
-//   • Realtime subscription updates cache whenever another device writes
+// ── DB ────────────────────────────────────────────────────────────────
+//
+// HOW SYNC WORKS:
+//   Every record in pp_data has: wallet (owner), key (data type), value (JSON)
+//   Employer writes payments/jobs under their own wallet key.
+//   When employer pays worker, we ALSO write a mirror copy under worker's wallet
+//   so the worker can find it by syncing their own wallet namespace.
+//   This makes cross-user data visible without any backend.
 //
 const db = {
   _w: ()=>(walletAddress||'anon').toLowerCase(),
   _k: (k)=>'pp_'+db._w()+'_'+k,
+  _get:(k,d)=>{ try{ const v=localStorage.getItem(db._k(k)); return v===null?d:JSON.parse(v); }catch{ return d; } },
+  _put:(k,v)=>{ try{ localStorage.setItem(db._k(k),JSON.stringify(v)); }catch{} },
 
-  // synchronous cache helpers
-  _get: (k,d)=>{ try{ const v=localStorage.getItem(db._k(k)); return v===null?d:JSON.parse(v); }catch{ return d; } },
-  _put: (k,v)=>{ try{ localStorage.setItem(db._k(k), JSON.stringify(v)); }catch{} },
+  // ── Write key to Supabase under this wallet ───────────────────────
+  async _upsert(wallet, key, value){
+    const sb=getSB(); if(!sb) return false;
+    const {error}=await sb.from('pp_data').upsert(
+      {wallet, key, value, updated_at:new Date().toISOString()},
+      {onConflict:'wallet,key'}
+    );
+    if(error){ console.error('upsert ['+wallet.slice(0,8)+'…]['+key+']:', error.message); return false; }
+    return true;
+  },
 
-  // ── Write: cache immediately + push to Supabase async ───────────────
+  // ── Write: local cache first, then cloud ─────────────────────────
   s(k, v){
-    db._put(k, v);       // instant — UI reads from cache, no blink
-    db._push(k, v);      // fire-and-forget to cloud
+    db._put(k, v);
+    db._push(k, v);
   },
 
   async _push(k, v){
-    const sb=getSB(); if(!sb){ setSyncUI('error','No Supabase'); return; }
-    setSyncUI('syncing','Saving…');
-    const {error}=await sb.from('pp_data').upsert(
-      {wallet:db._w(), key:k, value:v, updated_at:new Date().toISOString()},
-      {onConflict:'wallet,key'}
+    const ok = await db._upsert(db._w(), k, v);
+    if(ok) setSyncUI('ok','Synced');
+    else setSyncUI('error','Save failed — check console');
+  },
+
+  // ── Special write for payments: mirror to each worker's namespace ─
+  // This is what makes cross-user sync work:
+  // Employer saves payments under their wallet. Each payment also gets
+  // mirrored under the worker's wallet so they can see it.
+  async savePayments(pays){
+    db._put('payments', pays);
+    // Write full list under employer wallet
+    await db._upsert(db._w(), 'payments', pays);
+    // Mirror each payment under the recipient's wallet namespace
+    // Group by recipient wallet
+    const byWorker = {};
+    pays.forEach(p=>{
+      if(!p.to) return;
+      const wk = p.to.toLowerCase();
+      if(!byWorker[wk]) byWorker[wk]=[];
+      byWorker[wk].push(p);
+    });
+    // For each worker, upsert their slice (payments where to=worker)
+    const mirrors = Object.entries(byWorker).map(([wk, wkPays])=>
+      db._upsert(wk, 'payments_received', wkPays)
     );
-    if(error){ console.error('Supabase write error ['+k+']:', error.message); setSyncUI('error', error.message); }
-    else setSyncUI('ok','Synced');
+    await Promise.all(mirrors);
+    setSyncUI('ok','Synced');
   },
 
-  // ── Pull all keys for this wallet from Supabase into cache ──────────
+  // ── Pull all data for this wallet from cloud ──────────────────────
   async syncFromCloud(){
-    const sb=getSB(); if(!sb){ setSyncUI('error','Supabase unavailable'); return; }
+    const sb=getSB(); if(!sb) return;
     setSyncUI('syncing','Syncing…');
-    const {data,error}=await sb.from('pp_data').select('key,value').eq('wallet',db._w());
-    if(error){ console.error('Supabase sync error:', error.message); setSyncUI('error', error.message); return; }
-    if(data) data.forEach(row=>db._put(row.key, row.value));
-    setSyncUI('ok', data&&data.length ? 'Synced · '+data.length+' record'+(data.length===1?'':'s') : 'Connected');
+    try{
+      const {data,error}=await sb.from('pp_data')
+        .select('key,value')
+        .eq('wallet', db._w());
+      if(error){ setSyncUI('error', error.message); console.error('sync:', error); return; }
+      if(data) data.forEach(r=>{
+        db._put(r.key, r.value);
+        // payments_received = payments this wallet received from employers
+        // merge into local payments cache for worker view
+        if(r.key==='payments_received'){
+          const existing = db._get('payments',[]);
+          const incoming = r.value||[];
+          // merge without duplicates
+          const merged = [...incoming];
+          existing.forEach(p=>{ if(!merged.find(m=>m.id===p.id)) merged.push(p); });
+          merged.sort((a,b)=>b.timestamp-a.timestamp);
+          db._put('payments', merged);
+        }
+      });
+      const count = data ? data.length : 0;
+      setSyncUI('ok', count ? 'Synced · '+count+' records' : 'Connected — no data yet');
+    }catch(e){
+      setSyncUI('error', e.message);
+      console.error('syncFromCloud exception:', e);
+    }
   },
 
-  // ── Realtime: push changes from other devices into cache ─────────────
-  _ch: null,
+  // ── Realtime: auto-reconnect on drop ─────────────────────────────
+  _ch:null, _rtCb:null, _rtRetry:null,
   subscribeRealtime(onUpdate){
+    db._rtCb = onUpdate;
     const sb=getSB(); if(!sb) return;
+    db._doSubscribe(sb);
+  },
+  _doSubscribe(sb){
     if(db._ch) try{ sb.removeChannel(db._ch); }catch{}
     db._ch = sb.channel('pp:'+db._w())
-      .on('postgres_changes',{event:'*',schema:'public',table:'pp_data',filter:'wallet=eq.'+db._w()},
+      .on('postgres_changes',
+        {event:'*', schema:'public', table:'pp_data', filter:'wallet=eq.'+db._w()},
         payload=>{
-          if(payload.new?.key){ db._put(payload.new.key, payload.new.value); onUpdate(); }
+          if(payload.new?.key){
+            db._put(payload.new.key, payload.new.value);
+            if(db._rtCb) db._rtCb();
+          }
         })
       .subscribe(status=>{
-        if(status==='SUBSCRIBED') setSyncUI('ok','Live ✓');
-        if(status==='CHANNEL_ERROR') setSyncUI('error','Realtime error');
+        console.log('Realtime status:', status);
+        if(status==='SUBSCRIBED'){
+          setSyncUI('ok','Live ✓');
+          if(db._rtRetry){ clearTimeout(db._rtRetry); db._rtRetry=null; }
+        }
+        if(status==='CHANNEL_ERROR'||status==='TIMED_OUT'||status==='CLOSED'){
+          console.warn('Realtime '+status+' — will reconnect in 5s');
+          if(!db._rtRetry){
+            db._rtRetry=setTimeout(()=>{
+              db._rtRetry=null;
+              db._doSubscribe(getSB());
+            },5000);
+          }
+        }
       });
   },
-  unsubscribe(){ const sb=getSB(); if(sb&&db._ch){ try{sb.removeChannel(db._ch);}catch{} db._ch=null; } },
+  unsubscribe(){
+    if(db._rtRetry){ clearTimeout(db._rtRetry); db._rtRetry=null; }
+    const sb=getSB();
+    if(sb&&db._ch){ try{sb.removeChannel(db._ch);}catch{} db._ch=null; }
+  },
 
-  // ── Synchronous reads (from cache — always instant) ──────────────────
+  // ── Synchronous reads (from local cache — always instant) ─────────
   employees:   ()=>db._get('employees',  []),
   payments:    ()=>db._get('payments',   []),
   profile:     ()=>db._get('profile',    {}),
@@ -961,7 +1032,7 @@ const db = {
   saveDoneJobs:(m)=>db.s('done_jobs',m),
   saveCompletions:(c)=>db.s('completions',c),
 
-  // ── Export / Import ───────────────────────────────────────────────────
+  // Export / Import
   exportAll(){
     const prefix='pp_'+db._w()+'_', out={wallet:db._w(),exportedAt:Date.now(),data:{}};
     for(let i=0;i<localStorage.length;i++){
@@ -987,6 +1058,8 @@ async function disconnectWallet(){
   // Disconnect WalletConnect if active
   if(window._wcProvider){ try{ await window._wcProvider.disconnect(); }catch(_){} window._wcProvider=null; }
   if(window._ppPoll){ clearInterval(window._ppPoll); window._ppPoll=null; }
+  db.unsubscribe();
+  if(window._ppPoll){clearInterval(window._ppPoll);window._ppPoll=null;}
   db.unsubscribe();
   // Only remove the session role — wallet data (employees, payments, jobs) is
   // intentionally kept so it reloads when the same wallet reconnects.
@@ -1403,7 +1476,7 @@ async function doPay({toAddr,toName,role,amount,desc,period}){
   return{id:'PAY-'+Date.now(),from:walletAddress,fromName:currentUser.name||'Employer',to:toAddr,toName,role,amount,description:desc,period,txHash:rx.transactionHash,block:rx.blockNumber,timestamp:Date.now(),status:'confirmed',testMode:false};
 }
 
-function savePay(p){const pays=db.payments();pays.unshift(p);db.s('payments',pays);}
+function savePay(p){const pays=db.payments();pays.unshift(p);db._put('payments',pays);db.savePayments(pays);}
 
 function renderEHistory(){
   const pays=db.payments(), tb=$('e-hist-tb');
