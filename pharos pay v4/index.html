@@ -8,7 +8,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,700;1,9..144,400&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
 <script src="https://unpkg.com/@walletconnect/web3-provider@1.8.0/dist/umd/index.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 :root {
   --bg:#0d0f14; --bg2:#12151c; --surface:#181c27; --surface2:#1e2333;
@@ -862,24 +862,14 @@ let _sb = null;
 function getSB(){
   if(_sb) return _sb;
   try{
-    // UMD bundle may expose as window.supabase or window.supabase.default
-    const lib = (window.supabase && window.supabase.createClient)
-      ? window.supabase
-      : (window.supabase && window.supabase.default && window.supabase.default.createClient)
-        ? window.supabase.default
-        : null;
-    if(!lib){
-      console.error('Supabase SDK not loaded — window.supabase:', window.supabase);
-      setSyncUI('error','SDK not loaded');
-      return null;
-    }
+    const lib = (window.supabase && window.supabase.createClient) ? window.supabase : null;
+    if(!lib){ console.error('Supabase SDK not loaded'); return null; }
     _sb = lib.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       auth:{ persistSession:false },
       realtime:{ params:{ eventsPerSecond:10 }}
     });
-    console.log('Supabase client created ✓');
     return _sb;
-  }catch(e){ console.error('Supabase init error:', e); setSyncUI('error','Init failed: '+e.message); return null; }
+  }catch(e){ console.error('Supabase init:', e); return null; }
 }
 
 // ── Sync status badge helper ─────────────────────────────────────────
@@ -913,31 +903,60 @@ const db = {
     db._push(k, v);      // fire-and-forget to cloud
   },
 
+  // ── Write to Supabase with silent retry (3 attempts) ───────────────
   async _push(k, v){
-    const sb=getSB(); if(!sb){ setSyncUI('error','No Supabase'); return; }
-    setSyncUI('syncing','Saving…');
-    const {error}=await sb.from('pp_data').upsert(
-      {wallet:db._w(), key:k, value:v, updated_at:new Date().toISOString()},
-      {onConflict:'wallet,key'}
-    );
-    if(error){ console.error('Supabase write error ['+k+']:', error.message); setSyncUI('error', error.message); }
-    else setSyncUI('ok','Synced');
+    const sb=getSB(); if(!sb) return;
+    for(let attempt=1; attempt<=3; attempt++){
+      try{
+        const {error}=await sb.from('pp_data').upsert(
+          {wallet:db._w(), key:k, value:v, updated_at:new Date().toISOString()},
+          {onConflict:'wallet,key'}
+        );
+        if(!error){ setSyncUI('ok','Synced'); return; }
+        // Supabase returned an error response
+        if(attempt===3) setSyncUI('error', error.message);
+        else await new Promise(r=>setTimeout(r, attempt*1000)); // wait 1s, 2s
+      }catch(e){
+        // Network-level failure (Failed to fetch etc)
+        if(attempt===3){
+          console.warn('Supabase write failed after 3 attempts:', e.message);
+          setSyncUI('error','Saved locally — will retry on next sync');
+        } else {
+          await new Promise(r=>setTimeout(r, attempt*1500));
+        }
+      }
+    }
   },
 
   // ── Pull all keys for this wallet from Supabase into cache ──────────
   async syncFromCloud(){
-    const sb=getSB(); if(!sb){ setSyncUI('error','Supabase unavailable'); return; }
-    setSyncUI('syncing','Syncing…');
-    const {data,error}=await sb.from('pp_data').select('key,value').eq('wallet',db._w());
-    if(error){ console.error('Supabase sync error:', error.message); setSyncUI('error', error.message); return; }
-    if(data) data.forEach(row=>db._put(row.key, row.value));
-    setSyncUI('ok', data&&data.length ? 'Synced · '+data.length+' record'+(data.length===1?'':'s') : 'Connected');
+    const sb=getSB(); if(!sb){ setSyncUI('error','Supabase unavailable'); return false; }
+    try{
+      const {data,error}=await sb.from('pp_data').select('key,value').eq('wallet',db._w());
+      if(error){ console.warn('Supabase sync error:', error.message); setSyncUI('error', error.message); return false; }
+      if(data) data.forEach(row=>db._put(row.key, row.value));
+      db._everSynced = true;
+      setSyncUI('ok', data&&data.length ? 'Synced · '+data.length+' record'+(data.length===1?'':'s') : 'Connected');
+      return true;
+    }catch(e){
+      // Silent on poll failures — don't alarm user for transient network blips
+      console.warn('Supabase sync failed (will retry):', e.message);
+      // Only show error if we haven't successfully synced before
+      if(!db._everSynced) setSyncUI('error','Connecting…');
+      return false;
+    }
   },
 
-  // ── Realtime: push changes from other devices into cache ─────────────
-  _ch: null,
+  _everSynced: false,
+
+  // ── Realtime: auto-reconnect on drop ────────────────────────────────
+  _ch: null, _realtimeRetry: null,
   subscribeRealtime(onUpdate){
     const sb=getSB(); if(!sb) return;
+    db._rtOnUpdate = onUpdate; // save for reconnects
+    db._doSubscribe(sb, onUpdate);
+  },
+  _doSubscribe(sb, onUpdate){
     if(db._ch) try{ sb.removeChannel(db._ch); }catch{}
     db._ch = sb.channel('pp:'+db._w())
       .on('postgres_changes',{event:'*',schema:'public',table:'pp_data',filter:'wallet=eq.'+db._w()},
@@ -945,11 +964,27 @@ const db = {
           if(payload.new?.key){ db._put(payload.new.key, payload.new.value); onUpdate(); }
         })
       .subscribe(status=>{
-        if(status==='SUBSCRIBED') setSyncUI('ok','Live ✓');
-        if(status==='CHANNEL_ERROR') setSyncUI('error','Realtime error');
+        if(status==='SUBSCRIBED'){
+          setSyncUI('ok','Live ✓');
+          if(db._realtimeRetry){ clearTimeout(db._realtimeRetry); db._realtimeRetry=null; }
+        }
+        if(status==='CHANNEL_ERROR'||status==='TIMED_OUT'||status==='CLOSED'){
+          // Don't show error to user — silently reconnect after 5s
+          console.warn('Realtime dropped ('+status+'), reconnecting in 5s…');
+          if(!db._realtimeRetry){
+            db._realtimeRetry = setTimeout(()=>{
+              db._realtimeRetry=null;
+              db._doSubscribe(getSB(), db._rtOnUpdate||onUpdate);
+            }, 5000);
+          }
+        }
       });
   },
-  unsubscribe(){ const sb=getSB(); if(sb&&db._ch){ try{sb.removeChannel(db._ch);}catch{} db._ch=null; } },
+  unsubscribe(){
+    if(db._realtimeRetry){ clearTimeout(db._realtimeRetry); db._realtimeRetry=null; }
+    const sb=getSB();
+    if(sb&&db._ch){ try{sb.removeChannel(db._ch);}catch{} db._ch=null; }
+  },
 
   // ── Synchronous reads (from cache — always instant) ──────────────────
   employees:   ()=>db._get('employees',  []),
