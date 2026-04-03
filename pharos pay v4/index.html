@@ -848,103 +848,154 @@ let provider, signer, walletAddress, currentRole, currentUser={};
 //   create policy "wallet owner full access" on pp_data
 //     using (true) with check (true);
 //
-const SUPABASE_URL = 'https://ceijyjtghnposfuzuuuf.supabase.co';       // e.g. https://xxxx.supabase.co
-const SUPABASE_ANON_KEY = 'sb_publishable_xTSuMdgqHQw7ol7uBkFd9g__e86HnTC';
+const SUPABASE_URL      = 'https://ceijyjtghnposfuzuuuf.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNlaXl5anRnaG5wb3NmenV6dXVmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxNDIxNjMsImV4cCI6MjA5MDcxODE2M30.o9_cwhE9PCjdXye9tRoJLhWoitT_fHOMxEJKEpHeU3g';
 
+// ── Supabase singleton ───────────────────────────────────
 let _sb = null;
 function getSB(){
   if(_sb) return _sb;
-  if(typeof supabase === 'undefined' || SUPABASE_URL.startsWith('YOUR_')) return null;
-  _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-  return _sb;
+  try{
+    const lib = (window.supabase && window.supabase.createClient) ? window.supabase : null;
+    if(!lib){ console.error('Supabase SDK not loaded'); return null; }
+    _sb = lib.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth:{ persistSession:false },
+      realtime:{ params:{ eventsPerSecond:10 }}
+    });
+    return _sb;
+  }catch(e){ console.error('Supabase init error:', e); return null; }
 }
 
-// ══ DB — Supabase with localStorage fallback ══════════════
+// ── Sync status badge ────────────────────────────────────
+function setSyncUI(state, msg){
+  // state: 'syncing' | 'ok' | 'error'
+  const color = state==='ok' ? 'var(--green)' : state==='error' ? 'var(--red)' : 'var(--gold)';
+  const icon  = state==='ok' ? '☁' : state==='error' ? '⚠' : '↻';
+  ['e-sync-badge','w-sync-badge'].forEach(id=>{
+    const el=document.getElementById(id); if(!el) return;
+    el.textContent = icon+' '+msg;
+    el.style.color = color;
+  });
+}
+
+// ── DB — Supabase is the source of truth ─────────────────
+// Architecture:
+//   READ  → always await Supabase directly (fresh data)
+//   WRITE → await Supabase, then update local cache for instant re-render
+//   CACHE → localStorage used only so renders don't blank while awaiting
+//
 const db = {
-  _lkey:(k)=>'pp_'+(walletAddress||'anon').toLowerCase()+'_'+k,
-  _wallet:()=>(walletAddress||'anon').toLowerCase(),
+  _wallet: ()=> (walletAddress||'anon').toLowerCase(),
+  _lkey:   (k)=> 'pp_'+db._wallet()+'_'+k,
+  _lget:   (k,d=[])=>{ try{ const v=localStorage.getItem(db._lkey(k)); return v===null?d:JSON.parse(v); }catch{ return d; } },
+  _lset:   (k,v)=>{ try{ localStorage.setItem(db._lkey(k), JSON.stringify(v)); }catch{} },
 
-  // ── local cache helpers ──────────────────────────────────
-  _lget:(k,d)=>{ try{const v=localStorage.getItem(db._lkey(k));return v===null?d:JSON.parse(v);}catch{return d;} },
-  _lset:(k,v)=>{ try{localStorage.setItem(db._lkey(k),JSON.stringify(v));}catch{} },
-
-  // ── async cloud read (returns promise) ───────────────────
-  async _cget(k, fallback){
-    const sb=getSB(); if(!sb) return fallback;
-    try{
-      const {data,error}=await sb.from('pp_data')
-        .select('value')
-        .eq('wallet',db._wallet())
-        .eq('key',k)
-        .maybeSingle();
-      if(error||!data) return fallback;
-      db._lset(k, data.value); // refresh local cache
-      return data.value;
-    }catch{ return fallback; }
+  // ── Fetch a single key from Supabase ────────────────────
+  async fetch(key, fallback){
+    const sb=getSB();
+    if(!sb) return db._lget(key, fallback);
+    const {data,error}=await sb.from('pp_data')
+      .select('value')
+      .eq('wallet', db._wallet())
+      .eq('key', key)
+      .maybeSingle();
+    if(error){ console.error('db.fetch error:', key, error.message); return db._lget(key, fallback); }
+    const val = data ? data.value : fallback;
+    db._lset(key, val);   // refresh cache
+    return val;
   },
 
-  // ── async cloud write ────────────────────────────────────
-  async _cset(k, v){
-    db._lset(k, v); // always write locally first (instant UI)
+  // ── Write a key to Supabase (awaitable) ─────────────────
+  async set(key, val){
+    db._lset(key, val);   // update cache immediately for instant UI
+    setSyncUI('syncing','Saving…');
+    const sb=getSB();
+    if(!sb){ setSyncUI('error','No Supabase connection'); return; }
+    const {error}=await sb.from('pp_data').upsert(
+      {wallet:db._wallet(), key, value:val, updated_at:new Date().toISOString()},
+      {onConflict:'wallet,key'}
+    );
+    if(error){ console.error('db.set error:', key, error.message); setSyncUI('error', error.message); }
+    else { setSyncUI('ok','Synced'); }
+  },
+
+  // Alias so all existing db.s(k,v) calls work — now async-aware
+  s(key, val){ return db.set(key, val); },
+
+  // ── Pull ALL keys for this wallet from Supabase ─────────
+  async syncAll(){
+    const sb=getSB();
+    if(!sb){ setSyncUI('error','Supabase not available'); return false; }
+    setSyncUI('syncing','Syncing…');
+    const {data,error}=await sb.from('pp_data')
+      .select('key,value')
+      .eq('wallet', db._wallet());
+    if(error){ console.error('db.syncAll error:', error.message); setSyncUI('error', error.message); return false; }
+    if(data){ data.forEach(row=>db._lset(row.key, row.value)); }
+    setSyncUI('ok', data && data.length ? 'Synced · '+data.length+' records' : 'Connected — no data yet');
+    return true;
+  },
+
+  // ── Realtime subscription ────────────────────────────────
+  _ch: null,
+  subscribeRealtime(onKey){
     const sb=getSB(); if(!sb) return;
-    try{
-      await sb.from('pp_data').upsert(
-        {wallet:db._wallet(), key:k, value:v, updated_at:new Date().toISOString()},
-        {onConflict:'wallet,key'}
-      );
-    }catch(e){ console.warn('Supabase write failed, data saved locally:', e.message); }
+    if(db._ch) sb.removeChannel(db._ch);
+    db._ch = sb.channel('pp:'+db._wallet())
+      .on('postgres_changes',{event:'*',schema:'public',table:'pp_data',
+        filter:'wallet=eq.'+db._wallet()},
+        payload=>{
+          if(payload.new?.key){
+            db._lset(payload.new.key, payload.new.value);
+            onKey(payload.new.key);
+          }
+        })
+      .subscribe(status=>{
+        if(status==='SUBSCRIBED') setSyncUI('ok','Live ✓');
+        if(status==='CHANNEL_ERROR') setSyncUI('error','Realtime failed');
+      });
+  },
+  unsubscribe(){
+    const sb=getSB();
+    if(sb && db._ch){ try{ sb.removeChannel(db._ch); }catch{} db._ch=null; }
   },
 
-  // ── sync: pull latest from cloud into localStorage ───────
-  async sync(){
-    const sb=getSB(); if(!sb) return;
-    try{
-      const {data,error}=await sb.from('pp_data')
-        .select('key,value')
-        .eq('wallet',db._wallet());
-      if(error||!data) return;
-      data.forEach(row=>db._lset(row.key, row.value));
-    }catch{}
-  },
+  // ── Sync-reads (async — always fresh from Supabase) ─────
+  async employees(){ return db.fetch('employees',[]); },
+  async payments(){  return db.fetch('payments',[]); },
+  async profile(){   return db.fetch('profile',{}); },
+  async jobs(){      return db.fetch('jobs',[]); },
+  async doneJobs(){  return db.fetch('done_jobs',{}); },
+  async completions(){ return db.fetch('completions',[]); },
 
-  // ── public sync API (reads local cache, writes cloud+local)
-  // Reads are synchronous (from local cache for instant UI).
-  // After connect, call db.sync() once to hydrate cache from cloud.
-  employees:()=>db._lget('employees',[]),
-  payments:()=>db._lget('payments',[]),
-  profile:()=>db._lget('profile',{}),
-  jobs:()=>db._lget('jobs',[]),
-  doneJobs:()=>db._lget('done_jobs',{}),
-  completions:()=>db._lget('completions',[]),
+  // ── Cache-reads (synchronous — used only for instant re-render) ─
+  _employees(){ return db._lget('employees',[]); },
+  _payments(){  return db._lget('payments',[]); },
+  _jobs(){      return db._lget('jobs',[]); },
+  _doneJobs(){  return db._lget('done_jobs',{}); },
+  _completions(){ return db._lget('completions',[]); },
 
-  // Writes go to local cache immediately AND cloud async
-  s:(k,v)=>{ db._lset(k,v); db._cset(k,v); },
-  saveDoneJobs:(m)=>db.s('done_jobs',m),
-  saveCompletions:(c)=>db.s('completions',c),
+  async saveDoneJobs(m){ return db.set('done_jobs', m); },
+  async saveCompletions(c){ return db.set('completions', c); },
 
-  // ── profile special case (also used in session restore) ──
-  saveProfile:(p)=>db.s('profile',p),
-
-  // ── export / import (unchanged) ─────────────────────────
-  exportAll:()=>{
-    const addr=db._wallet(), prefix='pp_'+addr+'_';
-    const out={wallet:addr,exportedAt:Date.now(),data:{}};
+  // ── Export / Import ──────────────────────────────────────
+  exportAll(){
+    const prefix='pp_'+db._wallet()+'_';
+    const out={wallet:db._wallet(),exportedAt:Date.now(),data:{}};
     for(let i=0;i<localStorage.length;i++){
-      const key=localStorage.key(i);
-      if(key&&key.startsWith(prefix)){
-        const shortKey=key.slice(prefix.length);
-        try{out.data[shortKey]=JSON.parse(localStorage.getItem(key));}catch{}
+      const k=localStorage.key(i);
+      if(k&&k.startsWith(prefix)){
+        try{ out.data[k.slice(prefix.length)]=JSON.parse(localStorage.getItem(k)); }catch{}
       }
     }
     return out;
   },
-  importAll:(obj)=>{
+  importAll(obj){
     if(!obj||!obj.data) return false;
-    Object.entries(obj.data).forEach(([k,v])=>db.s(k,v));
-    return true;
+    const writes=Object.entries(obj.data).map(([k,v])=>db.set(k,v));
+    return Promise.all(writes).then(()=>true);
   },
 };
-
 
 const $=id=>document.getElementById(id);
 
@@ -955,6 +1006,8 @@ function goLanding(){ localStorage.removeItem('pp_last_role'); provider=null; si
 async function disconnectWallet(){
   // Disconnect WalletConnect if active
   if(window._wcProvider){ try{ await window._wcProvider.disconnect(); }catch(_){} window._wcProvider=null; }
+  if(window._syncInterval){ clearInterval(window._syncInterval); window._syncInterval=null; }
+  db.unsubscribe();
   // Only remove the session role — wallet data (employees, payments, jobs) is
   // intentionally kept so it reloads when the same wallet reconnects.
   localStorage.removeItem('pp_last_role');
@@ -1110,7 +1163,7 @@ async function connectWC(){
 
     const role = $('ob-role').value || 'Worker';
     currentUser = {name, role, wallet:walletAddress, joinedAt:Date.now()};
-    db.s('profile', currentUser);
+    await db.set('profile', currentUser);
 
     closeWalletPicker();
     currentRole==='employer' ? enterEmployer() : enterWorker();
@@ -1157,7 +1210,7 @@ async function connectAndOnboard(){
     walletAddress=await signer.getAddress();
     const role=$('ob-role').value||'Worker';
     currentUser={name,role,wallet:walletAddress,joinedAt:Date.now()};
-    db.s('profile',currentUser);
+    await db.set('profile',currentUser);
     currentRole==='employer'?enterEmployer():enterWorker();
   }catch(e){
     const msg=e?.message||'Connection failed';
@@ -1167,14 +1220,17 @@ async function connectAndOnboard(){
 }
 
 // ══ EMPLOYER ══════════════════════════════════════════════
-function enterEmployer(){
+async function enterEmployer(){
   $('e-company').textContent=currentUser.name;
   $('e-wallet').textContent=walletAddress.slice(0,6)+'…'+walletAddress.slice(-4);
   if(!TEST_MODE) $('e-tbanner').style.display='none';
   localStorage.setItem('pp_last_role','employer');
   show('screen-employer');
   updateMobTopbar(); checkNetwork(); toast('Welcome, '+currentUser.name+' 👋');
-  db.sync().then(()=>refreshE()); // pull latest from cloud then render
+  await refreshE();                                   // first render from Supabase
+  db.subscribeRealtime(()=>refreshE());               // live updates
+  if(window._syncInterval) clearInterval(window._syncInterval);
+  window._syncInterval=setInterval(()=>refreshE(),10000); // poll every 10s
 }
 
 function enav(page, btn){
@@ -1191,8 +1247,8 @@ function enav(page, btn){
   if(page==='jobssent'){fillJobWorkerSelect();renderEJobs();}
 }
 
-function refreshE(){
-  const emps=db.employees(), pays=db.payments();
+async function refreshE(){
+  const [emps,pays,jobs]=await Promise.all([db.employees(),db.payments(),db.jobs()]);
   const total=pays.reduce((s,p)=>s+p.amount,0);
   const now=new Date(),m=now.getMonth(),y=now.getFullYear();
   const month=pays.filter(p=>{const d=new Date(p.timestamp);return d.getMonth()===m&&d.getFullYear()===y;}).reduce((s,p)=>s+p.amount,0);
@@ -1201,8 +1257,8 @@ function refreshE(){
   $('e-s-pays').textContent=pays.length;
   $('e-s-month').textContent=month.toLocaleString();
   $('e-count-badge').textContent=emps.length;
-  const _jb=$('e-jobs-badge'); if(_jb) _jb.textContent=db.jobs().length;
-  renderERecent(); renderETeam(); renderEChart();
+  const _jb=$('e-jobs-badge'); if(_jb) _jb.textContent=jobs.length;
+  renderERecent(pays); renderETeam(emps,pays); renderEChart(pays);
   loadUSDCBalance();
 }
 
@@ -1231,8 +1287,8 @@ async function loadUSDCBalance(){
   }catch(e){ el.textContent='—'; }
 }
 
-function renderERecent(){
-  const pays=db.payments().slice(0,5), el=$('e-recent');
+function renderERecent(pays){
+  pays=(pays||db._payments()).slice(0,5); const el=$('e-recent');
   if(!pays.length){el.innerHTML='<div class="empty"><div class="ei">💸</div>No payments yet.</div>';return;}
   el.innerHTML=pays.map(p=>`
     <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border);gap:12px;">
@@ -1243,8 +1299,8 @@ function renderERecent(){
     </div>`).join('');
 }
 
-function renderETeam(){
-  const emps=db.employees().slice(0,5), pays=db.payments(), el=$('e-team-prev');
+function renderETeam(emps,pays){
+  emps=(emps||db._employees()).slice(0,5); pays=pays||db._payments(); const el=$('e-team-prev');
   if(!emps.length){el.innerHTML='<div class="empty"><div class="ei">👥</div>Add employees to get started.</div>';return;}
   el.innerHTML=`<div class="tw"><table>
     <thead><tr><th>Name</th><th>Role</th><th>Rate/mo</th><th>Total Paid</th></tr></thead>
@@ -1257,33 +1313,34 @@ function renderETeam(){
     }).join('')}</tbody></table></div>`;
 }
 
-function renderEChart(){
-  const pays=db.payments(); const months=last6(pays);
+function renderEChart(pays){
+  pays=pays||db._payments(); const months=last6(pays);
   const max=Math.max(...months.map(m=>m.t),1);
   $('e-chart').innerHTML=months.map(m=>`<div class="ibw"><div class="ib gold" style="height:${Math.max((m.t/max)*80,4)}px;" title="$${m.t}"></div></div>`).join('');
   $('e-chart-l').innerHTML=months.map(m=>`<div style="font-size:.58rem;color:var(--ink3);flex:1;text-align:center;">${m.l}</div>`).join('');
 }
 
-function addEmployee(){
+async function addEmployee(){
   const name=$('e-name').value.trim(), addr=$('e-addr').value.trim(), role=$('e-role').value, rate=parseFloat($('e-rate').value), dept=$('e-dept').value.trim();
   if(!name||!addr||!role||!rate){toast('Fill all required fields','error');return;}
   if(!ethers.utils.isAddress(addr)){toast('Invalid wallet address','error');return;}
-  const emps=db.employees();
+  const emps=await db.employees();
   if(emps.find(e=>e.address.toLowerCase()===addr.toLowerCase())){toast('Employee already exists','error');return;}
   emps.unshift({id:'EMP-'+Date.now(),name,address:addr,role,rate,dept,addedAt:Date.now()});
-  db.s('employees',emps);
+  await db.set('employees',emps);
   ['e-name','e-addr','e-rate','e-dept'].forEach(id=>$(id).value=''); $('e-role').value='';
   renderEList(); fillEmpSelect(); refreshE(); toast(name+' added to payroll ✓');
 }
 
-function removeEmployee(id){
+async function removeEmployee(id){
   if(!confirm('Remove this employee?'))return;
-  db.s('employees',db.employees().filter(e=>e.id!==id));
+  const emps=await db.employees();
+  await db.set('employees',emps.filter(e=>e.id!==id));
   renderEList();fillEmpSelect();refreshE();toast('Employee removed');
 }
 
-function renderEList(){
-  const emps=db.employees(), pays=db.payments(), el=$('e-list');
+async function renderEList(){
+  const [emps,pays]=[db._employees(),db._payments()]; const el=$('e-list');
   if(!emps.length){el.innerHTML='<div class="empty"><div class="ei">👤</div>No employees yet.</div>';return;}
   el.innerHTML=emps.map(e=>{
     const tot=pays.filter(p=>p.to.toLowerCase()===e.address.toLowerCase()).reduce((s,p)=>s+p.amount,0);
@@ -1300,8 +1357,8 @@ function renderEList(){
   }).join('');
 }
 
-function fillEmpSelect(){
-  const emps=db.employees(), sel=$('p-emp');
+async function fillEmpSelect(){
+  const emps=db._employees(), sel=$('p-emp');
   sel.innerHTML='<option value="">— Select employee —</option>'+emps.map(e=>`<option value="${e.address}" data-name="${e.name}" data-role="${e.role}" data-rate="${e.rate}">${e.name} · ${e.role}</option>`).join('');
   sel.onchange=()=>{const o=sel.selectedOptions[0];if(o.dataset.rate)$('p-amt').value=o.dataset.rate;};
 }
@@ -1314,7 +1371,7 @@ async function sendPayment(){
   const btn=$('p-btn'); btn.disabled=true; btn.innerHTML='<span class="spin"></span> Sending…';
   try{
     const p=await doPay({toAddr,toName:name,role,amount,desc,period});
-    savePay(p); toast(`$${amount} USDC sent to ${name} ✓`,'success');
+    await savePay(p); toast(`$${amount} USDC sent to ${name} ✓`,'success');
     $('p-amt').value='';$('p-desc').value='';$('p-period').value='';
     showInv(p); refreshE();
   }catch(e){toast(e.message,'error');}
@@ -1322,7 +1379,7 @@ async function sendPayment(){
 }
 
 function renderBulk(){
-  const emps=db.employees(), el=$('bulk-list');
+  const emps=db._employees(), el=$('bulk-list');
   if(!emps.length){el.innerHTML='<div class="empty" style="padding:20px;"><div class="ei" style="font-size:1.2rem;">📋</div>Add employees first.</div>';return;}
   el.innerHTML=emps.map(e=>`
     <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);">
@@ -1364,10 +1421,10 @@ async function doPay({toAddr,toName,role,amount,desc,period}){
   return{id:'PAY-'+Date.now(),from:walletAddress,fromName:currentUser.name||'Employer',to:toAddr,toName,role,amount,description:desc,period,txHash:rx.transactionHash,block:rx.blockNumber,timestamp:Date.now(),status:'confirmed',testMode:false};
 }
 
-function savePay(p){const pays=db.payments();pays.unshift(p);db.s('payments',pays);}
+async function savePay(p){const pays=await db.payments();pays.unshift(p);await db.set('payments',pays);}
 
-function renderEHistory(){
-  const pays=db.payments(), tb=$('e-hist-tb');
+async function renderEHistory(){
+  const pays=await db.payments(), tb=$('e-hist-tb');
   if(!pays.length){tb.innerHTML='<tr><td colspan="8"><div class="empty">No payments yet.</div></td></tr>';return;}
   tb.innerHTML=pays.map(p=>`<tr>
     <td><div style="font-weight:500;font-size:.8rem;">${p.toName}</div><div style="font-size:.62rem;color:var(--ink3);">${p.to.slice(0,8)}…${p.to.slice(-4)}</div></td>
@@ -1381,21 +1438,25 @@ function renderEHistory(){
   </tr>`).join('');
 }
 
-function renderEProfile(){
-  const pays=db.payments(),emps=db.employees(),total=pays.reduce((s,p)=>s+p.amount,0),uniq=[...new Set(pays.map(p=>p.to))].length;
+async function renderEProfile(){
+  const [pays,emps]=await Promise.all([db.payments(),db.employees()]);
+  const total=pays.reduce((s,p)=>s+p.amount,0),uniq=[...new Set(pays.map(p=>p.to))].length;
   $('e-pname').textContent=currentUser.name||'—'; $('e-pwallet').textContent=walletAddress||'—';
   $('e-rep').textContent=uniq; $('ep-total').textContent=total.toLocaleString();
   $('ep-pays').textContent=pays.length; $('ep-team').textContent=emps.length;
 }
 
 // ══ WORKER ════════════════════════════════════════════════
-function enterWorker(){
+async function enterWorker(){
   $('w-name-d').textContent=currentUser.name; $('w-wallet-d').textContent=walletAddress.slice(0,6)+'…'+walletAddress.slice(-4);
   $('w-greet').textContent=currentUser.name.split(' ')[0];
   if(!TEST_MODE) $('w-tbanner').style.display='none';
   localStorage.setItem('pp_last_role','worker');
   show('screen-worker'); updateMobTopbar(); checkNetwork(); toast('Welcome back, '+currentUser.name+' 👋');
-  db.sync().then(()=>refreshW()); // pull latest from cloud then render
+  await refreshW();                                   // first render from Supabase
+  db.subscribeRealtime(()=>refreshW());               // live updates
+  if(window._syncInterval) clearInterval(window._syncInterval);
+  window._syncInterval=setInterval(()=>refreshW(),10000); // poll every 10s
 }
 
 function wnav(page,btn){
@@ -1411,29 +1472,31 @@ function wnav(page,btn){
 }
 
 function myPays(){
-  if(!walletAddress) return db.payments();
-  return db.payments().filter(p=>p.to.toLowerCase()===walletAddress.toLowerCase());
+  const all=db._payments();
+  if(!walletAddress) return all;
+  return all.filter(p=>p.to.toLowerCase()===walletAddress.toLowerCase());
 }
 
 function myAssignedJobs(){
   if(!walletAddress) return [];
-  return db.jobs().filter(j=>j.to.toLowerCase()===walletAddress.toLowerCase());
+  return db._jobs().filter(j=>j.to.toLowerCase()===walletAddress.toLowerCase());
 }
 
-function refreshW(){
-  const pays=myPays(),total=pays.reduce((s,p)=>s+p.amount,0);
+async function refreshW(){
+  const [allPays,allJobs,doneMap]=await Promise.all([db.payments(),db.jobs(),db.doneJobs()]);
+  db._lset('payments',allPays); db._lset('jobs',allJobs); db._lset('done_jobs',doneMap);
+  const pays=walletAddress?allPays.filter(p=>p.to.toLowerCase()===walletAddress.toLowerCase()):allPays;
+  const total=pays.reduce((s,p)=>s+p.amount,0);
   const now=new Date(),m=now.getMonth(),y=now.getFullYear();
   const month=pays.filter(p=>{const d=new Date(p.timestamp);return d.getMonth()===m&&d.getFullYear()===y;}).reduce((s,p)=>s+p.amount,0);
   const emps=[...new Set(pays.map(p=>p.from))].length;
-  const doneMap=db.doneJobs();
-  const doneCount=pays.filter(p=>!!doneMap[p.id]).length;
   $('w-s-total').textContent=total.toLocaleString(); $('w-s-jobs').textContent=pays.length;
   $('w-s-emps').textContent=emps; $('w-s-month').textContent=month.toLocaleString();
-  renderWRecent(); renderWChart();
+  renderWRecent(pays); renderWChart(pays);
 }
 
-function renderWRecent(){
-  const pays=myPays().slice(0,5),el=$('w-recent');
+function renderWRecent(pays){
+  pays=(pays||myPays()).slice(0,5); const el=$('w-recent');
   if(!pays.length){el.innerHTML='<div class="empty"><div class="ei">💼</div>No payments received yet.</div>';return;}
   el.innerHTML=pays.map(p=>`
     <div class="jc ${p.testMode?'pending':'paid'}">
@@ -1445,15 +1508,16 @@ function renderWRecent(){
     </div>`).join('');
 }
 
-function renderWChart(){
-  const pays=myPays(),months=last6(pays),max=Math.max(...months.map(m=>m.t),1);
+function renderWChart(pays){
+  pays=pays||myPays(); const months=last6(pays),max=Math.max(...months.map(m=>m.t),1);
   $('w-chart').innerHTML=months.map(m=>`<div class="ibw"><div class="ib" style="height:${Math.max((m.t/max)*80,4)}px;" title="$${m.t}"></div></div>`).join('');
   $('w-chart-l').innerHTML=months.map(m=>`<div style="font-size:.58rem;color:var(--ink3);flex:1;text-align:center;">${m.l}</div>`).join('');
 }
 
-function renderWJobs(){
+async function renderWJobs(){
+  const [allPays,allJobs,doneMap]=await Promise.all([db.payments(),db.jobs(),db.doneJobs()]);
+  db._lset('payments',allPays); db._lset('jobs',allJobs); db._lset('done_jobs',doneMap);
   const pays=myPays(), assigned=myAssignedJobs(), el=$('w-jobs-list');
-  const doneMap=db.doneJobs();
   const all=[...assigned.map(j=>({...j,_type:'assigned'})),...pays.map(p=>({...p,_type:'payment'}))];
   while(el.firstChild) el.removeChild(el.firstChild);
   if(!all.length){
@@ -1533,8 +1597,8 @@ function renderWJobs(){
   });
 }
 
-function markJobDone(jobId){
-  const doneMap=db.doneJobs();
+async function markJobDone(jobId){
+  const doneMap=await db.doneJobs();
   if(doneMap[jobId]) return; // already done
   doneMap[jobId]={doneAt:Date.now()};
   db.saveDoneJobs(doneMap);
@@ -1542,13 +1606,14 @@ function markJobDone(jobId){
   const completions=db.completions();
   const pay=myPays().find(p=>p.id===jobId);
   if(pay) completions.unshift({jobId,workerName:currentUser.name,workerWallet:walletAddress,role:pay.role,description:pay.description,amount:pay.amount,doneAt:Date.now()});
-  db.saveCompletions(completions);
+  await db.saveCompletions(completions);
   toast('Job marked as done! Employer has been notified ✓','success');
   renderWJobs();
   renderWProfile(); // update Jobs Done count
 }
 
-function renderWEarnings(){
+async function renderWEarnings(){
+  await refreshW();
   const pays=myPays(),total=pays.reduce((s,p)=>s+p.amount,0),avg=pays.length?Math.round(total/pays.length):0,mx=pays.length?Math.max(...pays.map(p=>p.amount)):0;
   $('w-e-total').textContent=total.toLocaleString(); $('w-e-avg').textContent=avg.toLocaleString(); $('w-e-max').textContent=mx.toLocaleString();
   const tb=$('w-earn-tb');
@@ -1564,7 +1629,7 @@ function renderWEarnings(){
   </tr>`).join('');
 }
 
-function renderWInvoices(){
+async function renderWInvoices(){
   const pays=myPays(),el=$('w-inv-list');
   if(!pays.length){el.innerHTML='<div class="empty"><div class="ei">🧾</div>No invoices yet. They auto-generate with each payment.</div>';return;}
   el.innerHTML=pays.map((p,i)=>`
@@ -1583,7 +1648,7 @@ function renderWInvoices(){
     </div>`).join('');
 }
 
-function renderWProfile(){
+async function renderWProfile(){
   const pays=myPays(),total=pays.reduce((s,p)=>s+p.amount,0),emps=[...new Set(pays.map(p=>p.from))].length;
   // Jobs Done = jobs explicitly marked done via toggle
   const doneMap=db.doneJobs();
@@ -1640,13 +1705,13 @@ function printInvoice(p){
 
 // ══ JOBS SENT ═════════════════════════════════════════════════════
 function fillJobWorkerSelect(){
-  const emps=db.employees(), sel=$('js-worker');
+  const emps=db._employees(), sel=$('js-worker');
   if(!sel) return;
   sel.innerHTML='<option value="">— Select worker —</option>'+
     emps.map(e=>'<option value="'+e.address+'" data-name="'+e.name+'" data-role="'+e.role+'">'+e.name+' · '+e.role+'</option>').join('');
 }
 
-function sendJob(){
+async function sendJob(){
   const sel=$('js-worker');
   const addr=sel.value;
   const workerName=(sel.selectedOptions[0]&&sel.selectedOptions[0].dataset.name)||'';
@@ -1665,23 +1730,24 @@ function sendJob(){
     deadline:deadline||'',budget:budget,
     timestamp:Date.now(),status:'pending'
   };
-  const jobs=db.jobs(); jobs.unshift(job); db.s('jobs',jobs);
+  const jobs=await db.jobs(); jobs.unshift(job); await db.set('jobs',jobs);
   sel.value=''; $('js-title').value=''; $('js-desc').value=''; $('js-deadline').value=''; $('js-budget').value='';
   const jb=$('e-jobs-badge'); if(jb) jb.textContent=db.jobs().length;
   renderEJobs();
   toast('Job sent to '+workerName+' ✓','success');
 }
 
-function deleteJob(id){
+async function deleteJob(id){
   if(!confirm('Recall this job?')) return;
-  db.s('jobs',db.jobs().filter(j=>j.id!==id));
+  const jobs=await db.jobs();
+  await db.set('jobs',jobs.filter(j=>j.id!==id));
   const jb=$('e-jobs-badge'); if(jb) jb.textContent=db.jobs().length;
   renderEJobs();
   toast('Job recalled');
 }
 
-function renderEJobs(){
-  const jobs=db.jobs(), el=$('e-jobs-list');
+async function renderEJobs(){
+  const jobs=await db.jobs(), el=$('e-jobs-list');
   if(!el) return;
   while(el.firstChild) el.removeChild(el.firstChild);
   if(!jobs.length){
@@ -1738,13 +1804,13 @@ function exportData(){
 function importData(input){
   const file=input.files[0]; if(!file) return;
   const reader=new FileReader();
-  reader.onload=function(e){
+  reader.onload=async function(e){
     try{
       const obj=JSON.parse(e.target.result);
       if(!obj||!obj.data) throw new Error('Invalid file format');
       const count=Object.keys(obj.data).length;
       if(!confirm('Import '+count+' data record(s) from wallet '+(obj.wallet||'unknown').slice(0,10)+'…?\n\nThis will merge with your current data.')) return;
-      db.importAll(obj);
+      await db.importAll(obj);
       // Refresh whichever dashboard is visible
       if(currentRole==='employer') refreshE();
       else if(currentRole==='worker') refreshW();
@@ -1865,7 +1931,7 @@ window.addEventListener('DOMContentLoaded',()=>{
       provider=new ethers.providers.Web3Provider(wp2,'any');
       signer=provider.getSigner();
       walletAddress=accounts[0]; // set BEFORE db.profile() so wallet-key is correct
-      const savedProfile=db.profile();
+      const savedProfile=await db.profile();
       if(!savedProfile||!savedProfile.name){ localStorage.removeItem('pp_last_role'); return; }
       currentUser=savedProfile;
       currentRole=savedRole;
